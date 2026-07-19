@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "addressables": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "a323e7a4df34c3b4aa4f6e20f9922dc9640940736f6c9bc12206e2114a35c6ca"
+    },
     "android-accessibility": {
       "source": "new-silvermoon/awesome-android-agent-skills",
       "sourceType": "github",
@@ -55,11 +60,47 @@
       "skillPath": ".github/skills/architecture/android-viewmodel/SKILL.md",
       "computedHash": "f34deaa7bdb11605045f8500e1ea11b1adf04f0d3ab284826131e8753d0bd79f"
     },
+    "animation": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "415997bb40cd5f7000a36f807a625eed6661bd6984b1b972145a8cdfd72a871d"
+    },
+    "assembly-definitions": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "0ff9192a201729d9bbc14ea0523fdfed1d1ef958b7d1c78849f26bebe50fa558"
+    },
+    "audio": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "0291196582de62d8a8929cec149bcafb69f82f79309fff4c3244689efec17a98"
+    },
+    "build-live-game": {
+      "source": "Unity-Technologies/skills",
+      "sourceType": "github",
+      "skillPath": "skills/build-live-game/SKILL.md",
+      "computedHash": "28d013ac4ac6953558b9a1e369b3361ec6ec6c1cfe3b13e9ee3ff2e033ae5083"
+    },
+    "character-controller": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "29e0392c0fd7008d4d984fc59d812e2d5d3c67c16791d8c066dbcceb87df556e"
+    },
+    "cinemachine": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "9cb8d41e1fb98105d2581ba462fe43313b3b02cb71edce1b5739089eb8dec681"
+    },
     "coil-compose": {
       "source": "new-silvermoon/awesome-android-agent-skills",
       "sourceType": "github",
       "skillPath": ".github/skills/ui/coil-compose/SKILL.md",
       "computedHash": "cc0cc953930d58576551ce6caf32856ab93786668ae82b87356a8c47fcb75854"
+    },
+    "commit-trailers": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "398ec80e8bc57539b6cada62623c48de0aa260d1698c0eb4ece0ed82084a9d81"
     },
     "compose-navigation": {
       "source": "new-silvermoon/awesome-android-agent-skills",
@@ -79,6 +120,31 @@
       "skillPath": ".github/skills/ui/compose-ui/SKILL.md",
       "computedHash": "031fe59cb3c8566b5080d5cd36612092f66fd735a29ce0ecd1717502140503a2"
     },
+    "deep-interview": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "05e985190eaeb9f0a065be0e454ea66a62c77bce5e151f1db618156493d5473c"
+    },
+    "dialogue-system": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "772da9578697db1f3312f1f2c2391822eccaa344d5abe8709a28ce5685d9f047"
+    },
+    "dotween": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "b0d2a16fac8074a49ad977ffa8be44f58d028455bad2dd7fc66d3765860595f7"
+    },
+    "endless-runner": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "9b6ce22a8b0d2e97c45e662e31e794e9f57c32c090fa2937844741cd40a8ce0a"
+    },
+    "event-systems": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "a29b70aa2042c1bd4e3f0e3cb93321c1d6b881cfdfe99758b7ea40e6cbd0f17c"
+    },
     "find-skills": {
       "source": "vercel-labs/skills",
       "sourceType": "github",
@@ -91,17 +157,197 @@
       "skillPath": ".github/skills/performance/gradle-build-performance/SKILL.md",
       "computedHash": "4d9868684c2a41e519604e797df4cd8c6b32aa604dcb0d6b63174ea316a7f19f"
     },
+    "hud-statusline": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "1791c7a95ae34db396da41b9809c1290723c47cdff2af62d2a4131617de835dc"
+    },
+    "hyper-casual": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "b0456a1b2e983bb28f78862e39f46e091feff827506a08a75382353e6e6f279f"
+    },
+    "idle-clicker": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "3d5e0a40d9f9aea7b9df669342f10aca8991645f7c904bb05491efc3ccf72695"
+    },
+    "implement-in-app-purchases": {
+      "source": "Unity-Technologies/skills",
+      "sourceType": "github",
+      "skillPath": "skills/implement-in-app-purchases/SKILL.md",
+      "computedHash": "9f6ba2f3cdd13aaf511e573076d25216a592e51c58d8dfd1c3b5846ae2bdab8f"
+    },
+    "input-system": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "b7850da4968d68a5c56f49598c3b9fbd9cf8b27580d7ffa683da709b3a659da5"
+    },
+    "inventory-system": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "5eedc7b874ecf490d01e2eccb21edc9f9a517cb18a863913b4baf8465925d2b0"
+    },
     "kotlin-concurrency-expert": {
       "source": "new-silvermoon/awesome-android-agent-skills",
       "sourceType": "github",
       "skillPath": ".github/skills/concurrency_and_networking/kotlin-concurrency-expert/SKILL.md",
       "computedHash": "9b85fad8c81892908c8a4a7d0895c8f8b9647669640a22caa17f33c4553e3b49"
     },
+    "learner": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "3415a51cba7e1c670782a10bd16116957ff8a2249c8f2844f119148e6ad08523"
+    },
+    "levelplay-unity-integration": {
+      "source": "Unity-Technologies/skills",
+      "sourceType": "github",
+      "skillPath": "skills/levelplay-unity-integration/SKILL.md",
+      "computedHash": "dd7d8f480f9a8fdb387dc64e7ff123b1f07e2dd17bd96130ce7ac9b62d231d20"
+    },
+    "match3": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "f16917439b2c3b8df0273b9ec608e375a5716589061badcbff1e903779c78928"
+    },
+    "mobile": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "a30aa4b91bb7838b9b6ea90eaaca91f6a39f8f2f99caff3d6d7369296188f6f9"
+    },
+    "model-routing": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "a4fb6a17b55935c1979bc7d7a9e1d4c8704e593d4a31d0b4d701d02c45721cb5"
+    },
+    "navmesh": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "5f10d368dcf9fea47a5f98b54e07ef78a444265d8984c5c1d322a6c240120e4c"
+    },
+    "new-unity-project": {
+      "source": "Unity-Technologies/skills",
+      "sourceType": "github",
+      "skillPath": "skills/new-unity-project/SKILL.md",
+      "computedHash": "4cf79b05c2575a3ed19279fc19a6ceca8faa10a058c6a6ef553339e189bf0bd8"
+    },
+    "object-pooling": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "6d5e0afe4f82ef25f077ab70a5c26ba7748248a4ad778a2341dc33ad096d72bf"
+    },
+    "odin-inspector": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "a0643e241259ea003986b5e7f7297545d2d7364693fb21ba761cc483c46de0aa"
+    },
+    "physics": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "87808a0fbadd1fdd5083415c45b181fd9e4f4853d42e17a87e9f33715f408fa2"
+    },
+    "platformer-2d": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "75168c86012bb2fd7d61a68be2736fb2a5bc27086ff69cd072683c68fc638ccd"
+    },
+    "procedural-generation": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "375b4e1fb8ce83bde7ed4ac34afe7c3508d9e12f63ece58b0874263617448fd1"
+    },
+    "puzzle": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "3ce4467c1966d8b4a1589b27a3fe0c1c2eef13e7c0e25801d1b4e280be098954"
+    },
+    "rpg": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "2cbd7eab5b9a392b26e69b7a8bdccbd60a27c18fc13459ace754dc4d0abc9234"
+    },
     "rxjava-to-coroutines-migration": {
       "source": "new-silvermoon/awesome-android-agent-skills",
       "sourceType": "github",
       "skillPath": ".github/skills/migration/rxjava-to-coroutines-migration/SKILL.md",
       "computedHash": "1f6f3f71731f6eb4a27bb9d3df928296bfe70de18e8ac64a53b37957359e8acd"
+    },
+    "save-system": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "2d7a7e039051d14e2ac563c97d3c0afb8ac4a03dc3c037b03f519e4a0f8f24c7"
+    },
+    "scriptable-objects": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "19b421c9efac5301705e207773fedc4bc88721e8cbfd3ff5cb740e6aa64041ce"
+    },
+    "serialization-safety": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "e299aaa0f21a33ca9ad2de0cd47913000822f2db8b9e6cfb33fc2891fbd0152a"
+    },
+    "shader-graph": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "2d8bf98798ca5c3b548f5254bba41744cb3dabb0c499305c0e97080430c9a1f0"
+    },
+    "state-machine": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "33322e1e1de79ca3f749cfde077b03e1c5bd9fa129f99631a9537af0372caebf"
+    },
+    "textmeshpro": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "2848252a639a7bb0b4faca45c4e68ba3f3afdc14cdbbc078ac91a0924e77255e"
+    },
+    "topdown": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "e10786fc8e2c288a713cdd290119ddd2a1e8a0c02da5ab5b59015d4fca6b2323"
+    },
+    "ui-toolkit": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "a45d4930ffc41f12a6eb90dc3e15d3bf8f6a8bd08e2836df04cc16436ebd6f62"
+    },
+    "unitask": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "8f04232575ad48165a62eff78459eceab86e41777b0964456594838b37d4241b"
+    },
+    "unity-cli": {
+      "source": "Unity-Technologies/skills",
+      "sourceType": "github",
+      "skillPath": "skills/unity-cli/SKILL.md",
+      "computedHash": "86f5508676afb67e6dd53fff2c8e328217794006a0187dbd526d352b7aa15d04"
+    },
+    "unity-instincts": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "6889bad0fefe15c96d24d08b183a4d987e1daff109fbba1df57566bd434c9ede"
+    },
+    "unity-mcp-patterns": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "bb0707c2de8baea2a1920dbaf5c1a3558b1729a6ece9d62886dadf5340335bd5"
+    },
+    "unity-package-management": {
+      "source": "Unity-Technologies/skills",
+      "sourceType": "github",
+      "skillPath": "skills/unity-package-management/SKILL.md",
+      "computedHash": "87c793d4624aa8b6f878c86de2364b8566464ad40f504e276dc6b5f93bc708d9"
+    },
+    "urp-pipeline": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "70f0c983bbb04bb8e4e73b5e115f1ae1ab3909bf5ba0694c8cbb7cc8dbcaaa4b"
+    },
+    "vcontainer": {
+      "source": "/tmp/claude-0/-home-user-Something/836eeee9-4208-5651-9f52-74749a67886a/scratchpad/ecu-clone",
+      "sourceType": "local",
+      "computedHash": "91e75b0edfbb958bec5e2e477b90fd0d619193eac91459811d89ddcea7bb05b7"
     },
     "xml-to-compose-migration": {
       "source": "new-silvermoon/awesome-android-agent-skills",
