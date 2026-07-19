@@ -573,6 +573,136 @@ export function drawHubFence(ctx, inset, size) {
   }
 }
 
+// --- Battle backgrounds ---
+
+const BG_LOW_W = 110, BG_LOW_H = 65; // 440x260 / 4, keeps the arena's aspect ratio
+
+function drawCloud(ctx, x, y) {
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.ellipse(x, y, 6, 3, 0, 0, Math.PI * 2);
+  ctx.ellipse(x + 5, y - 2, 4, 2.5, 0, 0, Math.PI * 2);
+  ctx.ellipse(x - 5, y + 1, 4, 2.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawCactus(ctx, x, groundY, h) {
+  ctx.fillStyle = '#3d7a45';
+  ctx.fillRect(x - 1, groundY - h, 3, h);
+  ctx.fillRect(x - 4, groundY - h * 0.6, 3, h * 0.35);
+  ctx.fillRect(x - 4, groundY - h * 0.6, 6, 2);
+  ctx.fillRect(x + 2, groundY - h * 0.75, 3, h * 0.4);
+  ctx.fillRect(x - 1, groundY - h * 0.75, 6, 2);
+  ctx.fillStyle = '#2f6337';
+  ctx.fillRect(x - 1, groundY - h, 1, h);
+}
+
+function drawPineTree(ctx, x, groundY, h) {
+  ctx.fillStyle = '#2f5a35';
+  ctx.beginPath();
+  ctx.moveTo(x - h * 0.4, groundY); ctx.lineTo(x, groundY - h); ctx.lineTo(x + h * 0.4, groundY);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x - h * 0.32, groundY - h * 0.35); ctx.lineTo(x, groundY - h * 1.15); ctx.lineTo(x + h * 0.32, groundY - h * 0.35);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#5a3a20';
+  ctx.fillRect(x - 1, groundY - 2, 2, 3);
+}
+
+function drawDesertBg(ctx) {
+  // Full-coverage base first (sky / dune-band / sand), zero gaps -- decorations layer on top.
+  const skyColors = ['#bfe6ff', '#9fd6f5', '#7fc3ea'];
+  skyColors.forEach((col, i) => { ctx.fillStyle = col; ctx.fillRect(0, i * 10, BG_LOW_W, 10); });
+  ctx.fillStyle = '#e8c88a';
+  ctx.fillRect(0, 30, BG_LOW_W, 8);
+  ctx.fillStyle = '#e8c88a';
+  ctx.fillRect(0, 38, BG_LOW_W, BG_LOW_H - 38);
+
+  ctx.fillStyle = '#fff2b0';
+  ctx.beginPath(); ctx.arc(92, 12, 7, 0, Math.PI * 2); ctx.fill();
+  drawCloud(ctx, 25, 10);
+  drawCloud(ctx, 62, 17);
+
+  ctx.fillStyle = '#d8b878';
+  ctx.beginPath(); ctx.ellipse(20, 38, 30, 10, 0, Math.PI, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(92, 38, 34, 12, 0, Math.PI, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#d8b878';
+  ctx.fillRect(0, 38, BG_LOW_W, 3);
+  drawCactus(ctx, 14, 38, 13);
+  drawCactus(ctx, 98, 40, 15);
+}
+
+function drawForestBg(ctx) {
+  const skyColors = ['#bfe0d8', '#a8d4c8', '#8fc4b6'];
+  skyColors.forEach((col, i) => { ctx.fillStyle = col; ctx.fillRect(0, i * 8, BG_LOW_W, 8); });
+  ctx.fillStyle = '#7fae7a';
+  ctx.fillRect(0, 24, BG_LOW_W, 14);
+  ctx.fillStyle = '#4a7a45';
+  ctx.fillRect(0, 38, BG_LOW_W, BG_LOW_H - 38);
+
+  ctx.fillStyle = '#6a6a5a';
+  ctx.beginPath(); ctx.moveTo(0, 24); ctx.lineTo(18, 8); ctx.lineTo(30, 24); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#585848';
+  ctx.beginPath(); ctx.moveTo(BG_LOW_W, 20); ctx.lineTo(BG_LOW_W - 22, 6); ctx.lineTo(BG_LOW_W - 8, 24); ctx.lineTo(BG_LOW_W, 24); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#bfe8ff';
+  ctx.fillRect(50, 4, 6, 32);
+  ctx.fillStyle = '#e8faff';
+  ctx.fillRect(51, 4, 2, 32);
+  ctx.fillStyle = '#7fc8e0';
+  ctx.beginPath(); ctx.ellipse(53, 37, 10, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#bfe8ff';
+  ctx.beginPath(); ctx.ellipse(53, 36, 6, 2, 0, 0, Math.PI * 2); ctx.fill();
+  drawPineTree(ctx, 12, 36, 14);
+  drawPineTree(ctx, 25, 38, 10);
+  drawPineTree(ctx, 80, 36, 16);
+  drawPineTree(ctx, 95, 38, 11);
+  drawPineTree(ctx, 106, 40, 9);
+  ctx.fillStyle = '#3d6a3a';
+  ctx.fillRect(0, 38, BG_LOW_W, 3);
+}
+
+function drawOceanBg(ctx) {
+  const skyColors = ['#bfe6ff', '#a0d4f5', '#c8ecff'];
+  skyColors.forEach((col, i) => { ctx.fillStyle = col; ctx.fillRect(0, i * 8, BG_LOW_W, 8); });
+  ctx.fillStyle = '#2a5a8a';
+  ctx.fillRect(0, 24, BG_LOW_W, 4);
+  const waterColors = ['#3a78b0', '#3068a0', '#265a90', '#1c4c80'];
+  const bandH = (BG_LOW_H - 28) / waterColors.length;
+  waterColors.forEach((col, i) => { ctx.fillStyle = col; ctx.fillRect(0, 28 + i * bandH, BG_LOW_W, bandH + 1); });
+
+  drawCloud(ctx, 20, 8);
+  drawCloud(ctx, 88, 6);
+  ctx.fillStyle = '#6a9a7a';
+  ctx.beginPath(); ctx.ellipse(96, 26, 12, 4, 0, Math.PI, Math.PI * 2); ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 10; i++) {
+    const y = 30 + (i * 3.2) % (BG_LOW_H - 30);
+    const xOff = (i * 13) % BG_LOW_W;
+    ctx.beginPath();
+    ctx.moveTo(xOff, y);
+    ctx.lineTo(xOff + 8, y);
+    ctx.stroke();
+  }
+}
+
+const BATTLE_BG_SPECS = { desert: drawDesertBg, forest: drawForestBg, ocean: drawOceanBg };
+export const BATTLE_BG_TYPES = Object.keys(BATTLE_BG_SPECS);
+
+const battleBgCache = {};
+export function drawBattleBackground(ctx, type, w, h) {
+  let tile = battleBgCache[type];
+  if (!tile) {
+    tile = document.createElement('canvas');
+    tile.width = BG_LOW_W; tile.height = BG_LOW_H;
+    (BATTLE_BG_SPECS[type] || BATTLE_BG_SPECS.desert)(tile.getContext('2d'));
+    battleBgCache[type] = tile;
+  }
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(tile, 0, 0, BG_LOW_W, BG_LOW_H, 0, 0, w, h);
+}
+
 // --- Combat FX ---
 
 export class FxLayer {

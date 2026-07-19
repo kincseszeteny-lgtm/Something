@@ -79,6 +79,15 @@ list) so things lower on screen correctly draw in front of things
 higher up — the player visibly walks behind a tree they're above and
 in front of one they're below, instead of everything being flat.
 
+Matches get one of 3 pixel-art battle backgrounds, picked randomly each
+time you fight: **Desert** (sun, clouds, rolling dunes, cacti), **Forest**
+(cliffs on both sides, a cascading waterfall and pool, layered pine
+trees), and **Ocean** (you're standing on the water — wave-streaked
+blue bands, a distant island, no land in sight). Each is drawn once at
+110x65 onto an offscreen canvas and cached (`drawBattleBackground` in
+`src/draw.js`), then scaled up with nearest-neighbor every frame — cheap
+even though the arena redraws constantly for the idle-bob animation.
+
 ## What's intentionally out of scope for this pass
 - Only 1 enemy trio "biome" exists (reskinned by level/scaling); no curated
   per-level enemy roster across all 100 levels.

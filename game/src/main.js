@@ -14,7 +14,7 @@ import {
 } from './combat.js';
 import {
   drawCharacter, drawEnemy, FxLayer, drawHubIcon, drawHubGround, drawHubPath, drawHubFence,
-  drawHubDecoration, drawGroundShadow,
+  drawHubDecoration, drawGroundShadow, drawBattleBackground, BATTLE_BG_TYPES,
 } from './draw.js';
 
 const root = document.getElementById('app');
@@ -633,9 +633,12 @@ function skillMetaLine(s) {
 let match = null;
 let arenaCtx = null;
 
+let currentBattleBg = 'desert';
+
 function startMatch() {
   const c = state.character;
   match = createMatch(c);
+  currentBattleBg = BATTLE_BG_TYPES[Math.floor(Math.random() * BATTLE_BG_TYPES.length)];
   if (useMedsThisMatch && c.meds > 0) {
     c.meds -= 1;
     match.player.ki = match.player.maxKi;
@@ -692,6 +695,7 @@ function pct(v, max) { return Math.max(0, Math.min(100, Math.round((v / max) * 1
 function drawArena() {
   if (!arenaCtx) return;
   arenaCtx.clearRect(0, 0, 440, 260);
+  drawBattleBackground(arenaCtx, currentBattleBg, 440, 260);
   const c = state.character;
   drawCharacter(arenaCtx, 80, 225, c.appearance, { blonde: match.player.blonde, glow: match.player.glow ? '#fff9c0' : null, scale: 0.85 });
   const xs = ENEMY_XS;
