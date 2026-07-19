@@ -26,12 +26,13 @@ const HUB_SPEED = 2.6;
 const HUB_INTERACT_RADIUS = 55;
 const CROP_GROW_MS = 90 * 1000;
 const HUB_ICONS = {
-  house: { x: 170, y: 52, r: 38, scale: 1.7, ringDy: -20 },
+  house: { x: 170, y: 58, r: 44, scale: 2.2, ringDy: -28 },
   dummy: { x: 65, y: 96, r: 26, scale: 2.0, ringDy: -25 },
   shop: { x: 35, y: 190, r: 26, scale: 1.8, ringDy: -18 },
   crops: { x: 230, y: 186, r: 32, scale: 2.0, ringDy: -16 },
   portal: { x: 150, y: 306, r: 30, scale: 1.9, ringDy: -27 },
 };
+const HUB_CENTER = { x: HUB_SIZE / 2, y: HUB_SIZE / 2 + 10 };
 const HUB_KEY_MAP = {
   ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
   w: 'up', s: 'down', a: 'left', d: 'right', W: 'up', S: 'down', A: 'left', D: 'right',
@@ -326,7 +327,10 @@ function drawHubScene(c) {
   ctx.clearRect(0, 0, HUB_SIZE, HUB_SIZE);
 
   drawHubGround(ctx, HUB_SIZE);
-  drawHubPath(ctx, HUB_ICONS.portal.x, HUB_ICONS.portal.y, HUB_SIZE / 2, HUB_SIZE / 2 + 10);
+  for (const key of Object.keys(HUB_ICONS)) {
+    const icon = HUB_ICONS[key];
+    drawHubPath(ctx, HUB_CENTER.x, HUB_CENTER.y, icon.x, icon.y);
+  }
   drawHubFence(ctx, 13, HUB_SIZE);
 
   const crops = cropsStatus(c);
