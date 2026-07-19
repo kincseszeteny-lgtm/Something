@@ -33,12 +33,19 @@ Progress autosaves to `localStorage`.
 - Enemies (a trio) scale with player level so matches get harder as you
   progress, per the brief.
 
-## What's intentionally out of scope for this pass
+## Art style
 
-- **Art**: there are no illustrated sprites — characters are drawn
-  procedurally on `<canvas>` (colored shapes in a DBZ-ish palette). "Fancy"
-  skill animations are CSS/canvas VFX (particle bursts, screen shake, flash,
-  floating damage numbers), not hand-animated frames.
+Characters are genuine pixel art, not smooth vector shapes: each one is
+drawn algorithmically onto a tiny 22x30 low-resolution canvas, outlined
+(black silhouette dilated 1px), then scaled up with nearest-neighbor
+sampling so edges stay crisp and blocky — the same technique behind
+real retro sprites, aiming for a chibi GBA-era look (Dragon Ball Advanced
+Adventure/Buu's Fury). Idle characters have a subtle 2-frame bob. "Fancy"
+skill animations are still canvas VFX (particle bursts, screen shake,
+flash, floating damage numbers) layered on top, not hand-animated frames.
+See `drawCharLowRes` / `makeOutlined` in `src/draw.js`.
+
+## What's intentionally out of scope for this pass
 - **Hub**: currently a menu screen (Portal / Attributes / Shop buttons), not
   a free-roam walk-around space. The brief asked for something you can "go
   around and interact with" — that's a meaningfully bigger feature (a real

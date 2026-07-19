@@ -1,112 +1,185 @@
-// Procedurally drawn 2D characters + combat VFX. No external art assets —
-// stylized vector shapes in a DBZ-ish palette, animated for impact.
+// Pixel-art character rendering: shapes are drawn algorithmically onto a
+// tiny low-resolution canvas, outlined, then scaled up with nearest-
+// neighbor sampling so edges stay crisp and blocky (classic retro-sprite
+// technique) rather than smooth vector shapes.
+
+const GRID_W = 22;
+const GRID_H = 30;
+
+function hexToRgb(hex) {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+function rgbToHex(r, g, b) {
+  const c = (v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+function darken(hex, amt) {
+  const { r, g, b } = hexToRgb(hex);
+  return rgbToHex(r - amt, g - amt, b - amt);
+}
+
+function makeOutlined(w, h, drawFn) {
+  const src = document.createElement('canvas'); src.width = w; src.height = h;
+  drawFn(src.getContext('2d'));
+  const out = document.createElement('canvas'); out.width = w; out.height = h;
+  const octx = out.getContext('2d');
+  const offsets = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]];
+  for (const [dx, dy] of offsets) octx.drawImage(src, dx, dy);
+  octx.globalCompositeOperation = 'source-in';
+  octx.fillStyle = '#0a0a12';
+  octx.fillRect(0, 0, w, h);
+  octx.globalCompositeOperation = 'source-over';
+  octx.drawImage(src, 0, 0);
+  return out;
+}
+
+function drawHair(ctx, style, color, cx, topY) {
+  ctx.fillStyle = color;
+  if (style === 'spiky') {
+    ctx.fillRect(cx - 5, topY + 2, 10, 3);
+    const spikes = [[-5, 2, -7, -2], [-2, 1, -3, -4], [1, 0, 1, -5], [3, 1, 5, -3], [5, 2, 8, -1]];
+    for (const [x1, y1, x2, y2] of spikes) {
+      ctx.beginPath();
+      ctx.moveTo(cx + x1, topY + y1 + 2);
+      ctx.lineTo(cx + x2, topY + y2 + 2);
+      ctx.lineTo(cx + x1 + 2, topY + y1 + 2);
+      ctx.closePath();
+      ctx.fill();
+    }
+  } else if (style === 'flame') {
+    ctx.fillRect(cx - 5, topY + 3, 10, 2);
+    const tips = [[-5, -1], [-3, -6], [-1, -3], [1, -7], [3, -4], [5, -1]];
+    for (const [tx, th] of tips) {
+      ctx.beginPath();
+      ctx.moveTo(cx + tx - 1, topY + 3);
+      ctx.lineTo(cx + tx, topY + th);
+      ctx.lineTo(cx + tx + 1, topY + 3);
+      ctx.fill();
+    }
+  } else if (style === 'wild') {
+    ctx.fillRect(cx - 5, topY + 2, 10, 3);
+    const tufts = [[-6, -5], [-3, -8], [0, -6], [3, -8], [6, -4]];
+    for (const [tx, th] of tufts) {
+      ctx.beginPath();
+      ctx.moveTo(cx + tx - 2, topY + 3);
+      ctx.lineTo(cx + tx + 2, topY + th);
+      ctx.lineTo(cx + tx + 3, topY + 3);
+      ctx.fill();
+    }
+  } else if (style === 'mohawk') {
+    ctx.fillRect(cx - 5, topY + 3, 10, 2);
+    ctx.beginPath();
+    ctx.moveTo(cx - 2, topY + 3); ctx.lineTo(cx, topY - 7); ctx.lineTo(cx + 2, topY + 3);
+    ctx.fill();
+  } else {
+    ctx.beginPath(); ctx.arc(cx, topY + 3, 6, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+    ctx.fillRect(cx - 6, topY + 2, 12, 3);
+  }
+}
+
+function drawCharLowRes(ctx, opt) {
+  const {
+    skin, hair, hairStyle, gi, undershirt = '#1a2a4a',
+    pants = '#26283a', boots = '#14141c', bootSole = '#3a3a4a', bob = 0,
+  } = opt;
+  const giShadow = darken(gi, 40);
+  const cx = 11, headY = 8 + bob;
+
+  ctx.fillStyle = pants;
+  ctx.fillRect(cx - 4, 21 + bob, 2, 6);
+  ctx.fillRect(cx + 2, 21 + bob, 2, 6);
+
+  ctx.fillStyle = boots;
+  ctx.fillRect(cx - 5, 26 + bob, 4, 3);
+  ctx.fillRect(cx + 1, 26 + bob, 4, 3);
+  ctx.fillStyle = bootSole;
+  ctx.fillRect(cx - 5, 26 + bob, 4, 1);
+  ctx.fillRect(cx + 1, 26 + bob, 4, 1);
+
+  ctx.fillStyle = gi;
+  ctx.fillRect(cx - 8, 13 + bob, 3, 8);
+  ctx.fillRect(cx + 5, 13 + bob, 3, 8);
+  ctx.fillStyle = skin;
+  ctx.fillRect(cx - 8, 20 + bob, 3, 3);
+  ctx.fillRect(cx + 5, 20 + bob, 3, 3);
+
+  ctx.fillStyle = gi;
+  ctx.fillRect(cx - 5, 12 + bob, 10, 9);
+  ctx.fillStyle = giShadow;
+  ctx.fillRect(cx + 2, 12 + bob, 3, 9);
+
+  ctx.fillStyle = undershirt;
+  ctx.beginPath();
+  ctx.moveTo(cx - 2, 12 + bob); ctx.lineTo(cx + 2, 12 + bob); ctx.lineTo(cx, 16 + bob);
+  ctx.fill();
+
+  ctx.fillStyle = '#1a1a22';
+  ctx.fillRect(cx - 5, 19 + bob, 10, 2);
+
+  ctx.fillStyle = skin;
+  ctx.fillRect(cx - 2, 10 + bob, 4, 3);
+  ctx.beginPath();
+  ctx.arc(cx, headY, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#0a0a12';
+  ctx.fillRect(cx - 3, headY, 1, 2);
+  ctx.fillRect(cx + 2, headY, 1, 2);
+
+  drawHair(ctx, hairStyle, hair, cx, headY - 5);
+}
+
+function idleBob() {
+  return Math.floor(Date.now() / 500) % 2;
+}
 
 export function drawCharacter(ctx, x, y, appearance, opts = {}) {
-  const { height = 0.5, build = 0.5, skinColor, hairColor, hairStyle, giColor } = appearance;
-  const scale = opts.scale || 1;
+  const heightMult = 0.8 + (appearance.height ?? 0.5) * 0.4;
+  const buildMult = 0.85 + (appearance.build ?? 0.5) * 0.3;
+  const scale = (opts.scale || 1) * 5 * heightMult;
+  const xScale = buildMult;
   const flip = opts.flip ? -1 : 1;
-  const glow = opts.glow;
-  const blonde = opts.blonde;
-  const h = (80 + height * 60) * scale;
-  const w = (40 + build * 30) * scale;
 
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(flip, 1);
-
-  if (glow) {
+  if (opts.glow) {
     ctx.save();
-    ctx.shadowColor = glow;
-    ctx.shadowBlur = 30 * scale;
+    ctx.shadowColor = opts.glow;
+    ctx.shadowBlur = 30;
     ctx.beginPath();
-    ctx.arc(0, -h * 0.55, w * 1.3, 0, Math.PI * 2);
-    ctx.fillStyle = glow + '33';
+    ctx.arc(x, y - GRID_H * scale * 0.4, GRID_W * scale * 0.5, 0, Math.PI * 2);
+    ctx.fillStyle = opts.glow + '33';
     ctx.fill();
     ctx.restore();
   }
 
-  // legs
-  ctx.fillStyle = '#2a2a3a';
-  ctx.fillRect(-w * 0.28, -h * 0.05, w * 0.22, h * 0.45);
-  ctx.fillRect(w * 0.06, -h * 0.05, w * 0.22, h * 0.45);
+  const sprite = makeOutlined(GRID_W, GRID_H, (c) => drawCharLowRes(c, {
+    skin: appearance.skinColor,
+    hair: opts.blonde ? '#ffe94d' : appearance.hairColor,
+    hairStyle: appearance.hairStyle,
+    gi: appearance.giColor,
+    bob: idleBob(),
+  }));
 
-  // torso (gi)
-  ctx.fillStyle = giColor;
-  ctx.beginPath();
-  ctx.moveTo(-w * 0.32, -h * 0.55);
-  ctx.lineTo(w * 0.32, -h * 0.55);
-  ctx.lineTo(w * 0.28, -h * 0.02);
-  ctx.lineTo(-w * 0.28, -h * 0.02);
-  ctx.closePath();
-  ctx.fill();
-
-  // belt
-  ctx.fillStyle = '#1a1a2a';
-  ctx.fillRect(-w * 0.3, -h * 0.1, w * 0.6, h * 0.05);
-
-  // arms
-  ctx.fillStyle = giColor;
-  ctx.fillRect(-w * 0.48, -h * 0.52, w * 0.16, h * 0.32);
-  ctx.fillRect(w * 0.32, -h * 0.52, w * 0.16, h * 0.32);
-  ctx.fillStyle = skinColor;
-  ctx.fillRect(-w * 0.48, -h * 0.24, w * 0.16, h * 0.1);
-  ctx.fillRect(w * 0.32, -h * 0.24, w * 0.16, h * 0.1);
-
-  // neck + head
-  ctx.fillStyle = skinColor;
-  ctx.fillRect(-w * 0.08, -h * 0.62, w * 0.16, h * 0.08);
-  ctx.beginPath();
-  ctx.arc(0, -h * 0.72, w * 0.26, 0, Math.PI * 2);
-  ctx.fill();
-
-  // hair
-  ctx.fillStyle = blonde ? '#ffe94d' : hairColor;
-  drawHair(ctx, hairStyle, w, h);
-
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.translate(x, y);
+  ctx.scale(flip * xScale, 1);
+  ctx.drawImage(sprite, 0, 0, GRID_W, GRID_H, -GRID_W * scale / 2, -GRID_H * scale, GRID_W * scale, GRID_H * scale);
   ctx.restore();
 }
 
-function drawHair(ctx, style, w, h) {
-  const cx = 0, cy = -h * 0.72, r = w * 0.28;
-  ctx.beginPath();
-  if (style === 'flame' || style === 'spiky') {
-    const spikes = style === 'flame' ? 7 : 5;
-    for (let i = 0; i <= spikes; i++) {
-      const a = Math.PI + (i / spikes) * Math.PI;
-      const px = cx + Math.cos(a) * r * 1.1;
-      const py = cy + Math.sin(a) * r * 1.1;
-      const tipLen = style === 'flame' ? r * (1.4 + (i % 2) * 0.6) : r * 1.2;
-      const tx = cx + Math.cos(a) * tipLen;
-      const ty = cy + Math.sin(a) * tipLen - r * 0.6;
-      if (i === 0) ctx.moveTo(px, py);
-      ctx.lineTo(tx, ty);
-      ctx.lineTo(px, py);
-    }
-  } else if (style === 'wild') {
-    for (let i = 0; i < 10; i++) {
-      const a = Math.random() * Math.PI * 2;
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + Math.cos(a) * r * 1.5, cy + Math.sin(a) * r * 1.5 - r);
-    }
-  } else if (style === 'mohawk') {
-    ctx.moveTo(cx - r, cy);
-    ctx.lineTo(cx, cy - r * 2.2);
-    ctx.lineTo(cx + r, cy);
-  } else {
-    // bowl
-    ctx.arc(cx, cy, r * 1.05, Math.PI, Math.PI * 2);
-  }
-  ctx.closePath();
-  ctx.fill();
-}
+const ENEMY_PALETTES = [
+  { skin: '#c9895a', hair: '#3a1a1a', gi: '#5a1a1a', hairStyle: 'spiky' },
+  { skin: '#8a6a5a', hair: '#1a1a1a', gi: '#3a3a4a', hairStyle: 'wild' },
+  { skin: '#a05aa0', hair: '#2a0a2a', gi: '#4a1a6a', hairStyle: 'mohawk' },
+  { skin: '#5a8a6a', hair: '#0a2a1a', gi: '#1a4a2a', hairStyle: 'bowl' },
+];
 
 export function drawEnemy(ctx, x, y, seed, scale = 1) {
-  const skin = ['#c9895a', '#8a6a5a', '#a05aa0', '#5a8a6a'][seed % 4];
-  const gi = ['#3a3a4a', '#5a1a1a', '#1a1a5a'][seed % 3];
+  const pal = ENEMY_PALETTES[seed % ENEMY_PALETTES.length];
   drawCharacter(ctx, x, y, {
-    skinColor: skin, hairColor: '#1a1a1a', hairStyle: ['spiky', 'wild', 'mohawk'][seed % 3],
-    giColor: gi, height: 0.4 + (seed % 3) * 0.1, build: 0.4 + (seed % 2) * 0.15,
-  }, { scale });
+    skinColor: pal.skin, hairColor: pal.hair, hairStyle: pal.hairStyle, giColor: pal.gi,
+  }, { scale, flip: true });
 }
 
 // --- Combat FX ---
@@ -120,6 +193,7 @@ export class FxLayer {
     this.flash = 0;
     this.shake = 0;
     this.running = false;
+    this.onTick = null;
   }
 
   start() {
@@ -157,6 +231,7 @@ export class FxLayer {
 
   tick() {
     const { ctx, canvas } = this;
+    if (this.onTick) this.onTick();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     this.particles = this.particles.filter((p) => p.life > 0);

@@ -17,6 +17,7 @@ import { drawCharacter, drawEnemy, FxLayer } from './draw.js';
 const root = document.getElementById('app');
 
 const HUB_NAMES = ['Run-down Shack', 'Small Hut', 'Modest House', 'Cozy Home', 'Fine Estate', 'Fortress'];
+const ENEMY_XS = [250, 325, 400];
 const HUB_EMOJI = ['\u{1F3DA}\u{FE0F}', '\u{1F6D6}', '\u{1F3E0}', '\u{1F3E1}', '\u{1F3D8}\u{FE0F}', '\u{1F3F0}'];
 
 const state = newSaveState();
@@ -386,7 +387,7 @@ function renderMatch(el) {
   const arenaCanvas = document.getElementById('arenaCanvas');
   arenaCtx = arenaCanvas.getContext('2d');
   const fxCanvas = document.getElementById('fxCanvas');
-  if (!fx || fx.canvas !== fxCanvas) { fx = new FxLayer(fxCanvas); fx.start(); }
+  if (!fx || fx.canvas !== fxCanvas) { fx = new FxLayer(fxCanvas); fx.onTick = () => drawArena(); fx.start(); }
   drawArena();
 
   el.querySelectorAll('[data-enemybtn]').forEach((b) => b.onclick = () => {
@@ -405,11 +406,11 @@ function drawArena() {
   if (!arenaCtx) return;
   arenaCtx.clearRect(0, 0, 440, 260);
   const c = state.character;
-  drawCharacter(arenaCtx, 90, 220, c.appearance, { blonde: match.player.blonde, glow: match.player.glow ? '#fff9c0' : null, scale: 1.1 });
-  const xs = [260, 330, 400];
+  drawCharacter(arenaCtx, 80, 225, c.appearance, { blonde: match.player.blonde, glow: match.player.glow ? '#fff9c0' : null, scale: 0.85 });
+  const xs = ENEMY_XS;
   match.enemies.forEach((e, i) => {
     if (!e.alive) return;
-    drawEnemy(arenaCtx, xs[i], 210 + (i % 2) * 10, e.seed, 0.85);
+    drawEnemy(arenaCtx, xs[i], 220, e.seed, 0.6);
   });
 }
 
@@ -543,10 +544,9 @@ function playEvents(events, cb) {
 }
 
 function positionFor(actor) {
-  if (actor === 'player') return { x: 90, y: 170 };
+  if (actor === 'player') return { x: 80, y: 160 };
   const idx = match.enemies.findIndex((e) => e.id === actor);
-  const xs = [260, 330, 400];
-  return { x: xs[Math.max(0, idx)], y: 170 };
+  return { x: ENEMY_XS[Math.max(0, idx)], y: 170 };
 }
 
 function animateEvent(ev) {
