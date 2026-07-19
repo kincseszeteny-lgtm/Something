@@ -1,15 +1,16 @@
 import {
   RACES, ATTRIBUTES, SKILLS, skillById, HAIR_STYLES, APPEARANCE_LIMITS,
   SKIN_COLORS, HAIR_COLORS, GI_COLORS, SHOP_ITEMS, HUB_UPGRADE_COST_DIAMONDS,
-  MAX_HUB_LEVEL, MAX_LEVEL, XP_PER_LEVEL,
+  MAX_HUB_LEVEL, MAX_LEVEL, XP_PER_LEVEL, CLOTHING_CATEGORIES, CLOTHING_ITEMS, clothingById,
 } from './data.js';
 import {
   newCharacter, newSaveState, saveGame, loadCharacter, derivedStats,
-  upgradeAttribute, addXP,
+  upgradeAttribute, addXP, buyClothingItem, isClothingEquipped, toggleEquipClothing,
 } from './state.js';
 import {
   createMatch, playerAttack, playerBlock, playerUseSkill, canUseSkill,
   playerResolveRush, playerTurnDone, runEnemyAction, endRound,
+  playerHasStatus, playerSkipDueToStatus, ENEMY_ACTIONS_PER_ROUND,
   RUSH_WINDOW_START, RUSH_WINDOW_END,
 } from './combat.js';
 import {
@@ -111,6 +112,7 @@ function render() {
     case 'match': return renderMatch(el);
     case 'result': return renderResult(el);
     case 'stats': return renderStats(el);
+    case 'wardrobe': return renderWardrobe(el);
     case 'shop': return renderShop(el);
     default: return renderTitle(el);
   }
@@ -193,7 +195,7 @@ function renderCreate(el) {
     <button class="btn wide" id="confirmBtn" ${c.race && c.name.trim() ? '' : 'disabled'}>Begin Journey</button>
   `;
 
-  const preview = () => drawCharacter(document.getElementById('charCanvas').getContext('2d'), 100, 220, c.appearance, {});
+  const preview = () => drawCharacter(document.getElementById('charCanvas').getContext('2d'), 100, 220, c.appearance, { race: c.race, gender: c.gender, equipment: c.equipment });
   const redrawAll = () => { preview(); };
 
   el.querySelectorAll('[data-race]').forEach((n) => n.onclick = () => { c.race = n.dataset.race; renderCreate(el); });
@@ -260,10 +262,14 @@ function renderHub(el) {
       </div>
     </div>
 
-    <button class="btn secondary wide" id="statsBtn">Attributes</button>
+    <div class="row">
+      <button class="btn secondary grow" id="statsBtn">Attributes</button>
+      <button class="btn secondary grow" id="wardrobeBtn">Wardrobe</button>
+    </div>
   `;
 
   el.querySelector('#statsBtn').onclick = () => go('stats');
+  el.querySelector('#wardrobeBtn').onclick = () => go('wardrobe');
 
   el.querySelectorAll('[data-dir]').forEach((btn) => {
     const dir = btn.dataset.dir;
@@ -363,7 +369,7 @@ function drawHubScene(c) {
     })),
     {
       x: hubPlayer.x, y: hubPlayer.y, shadowRx: 10,
-      draw: () => drawCharacter(ctx, hubPlayer.x, hubPlayer.y, c.appearance, { scale: 0.34, flip: hubFacing }),
+      draw: () => drawCharacter(ctx, hubPlayer.x, hubPlayer.y, c.appearance, { scale: 0.34, flip: hubFacing, race: c.race, gender: c.gender, equipment: c.equipment }),
     },
   ];
   sortables.sort((a, b) => a.y - b.y);
@@ -525,6 +531,53 @@ function renderStats(el) {
     upgradeAttribute(c, btn.dataset.up);
     saveGame(state);
     renderStats(el);
+  });
+  el.querySelector('#backBtn').onclick = () => go('hub');
+}
+
+// ---------- WARDROBE ----------
+function renderWardrobe(el) {
+  const c = state.character;
+  el.innerHTML = `
+    <div class="row between"><h2>Wardrobe</h2><div class="badge gold">${c.coins} coins</div></div>
+    <canvas id="wardrobeCanvas" width="200" height="240" style="margin:0 auto;display:block"></canvas>
+    ${CLOTHING_CATEGORIES.map((cat) => `
+      <div class="dim" style="margin-top:4px">${cat.label}</div>
+      <div class="col" data-category="${cat.key}">
+        ${CLOTHING_ITEMS.filter((it) => it.slot === cat.key).map((it) => {
+          const owned = c.ownedClothing.includes(it.id);
+          const equipped = isClothingEquipped(c, it);
+          return `
+            <div class="panel row between">
+              <div>
+                <strong>${it.name}</strong>
+                <div class="dim">${it.desc}</div>
+              </div>
+              ${owned
+                ? `<button class="btn small ${equipped ? 'blue' : 'secondary'}" data-equip="${it.id}">${equipped ? 'Equipped ✓' : 'Equip'}</button>`
+                : `<button class="btn small" data-buy="${it.id}" ${c.coins >= it.cost ? '' : 'disabled'}>${it.cost} \u{1FA99}</button>`}
+            </div>`;
+        }).join('')}
+      </div>
+    `).join('')}
+    <button class="btn secondary wide" id="backBtn">Back to Hub</button>
+  `;
+
+  const preview = () => drawCharacter(document.getElementById('wardrobeCanvas').getContext('2d'), 100, 220, c.appearance, { race: c.race, gender: c.gender, equipment: c.equipment });
+  preview();
+
+  el.querySelectorAll('[data-buy]').forEach((btn) => btn.onclick = () => {
+    const item = clothingById(btn.dataset.buy);
+    if (!item || !buyClothingItem(c, item)) return;
+    saveGame(state);
+    renderWardrobe(el);
+  });
+  el.querySelectorAll('[data-equip]').forEach((btn) => btn.onclick = () => {
+    const item = clothingById(btn.dataset.equip);
+    if (!item) return;
+    toggleEquipClothing(c, item);
+    saveGame(state);
+    renderWardrobe(el);
   });
   el.querySelector('#backBtn').onclick = () => go('hub');
 }
@@ -697,7 +750,7 @@ function drawArena() {
   arenaCtx.clearRect(0, 0, 440, 260);
   drawBattleBackground(arenaCtx, currentBattleBg, 440, 260);
   const c = state.character;
-  drawCharacter(arenaCtx, 80, 225, c.appearance, { blonde: match.player.blonde, glow: match.player.glow ? '#fff9c0' : null, scale: 0.85 });
+  drawCharacter(arenaCtx, 80, 225, c.appearance, { blonde: match.player.blonde, glow: match.player.glow ? '#fff9c0' : null, scale: 0.85, race: c.race, gender: c.gender, equipment: c.equipment });
   const xs = ENEMY_XS;
   match.enemies.forEach((e, i) => {
     if (!e.alive) return;
@@ -709,6 +762,21 @@ function renderActionArea() {
   const area = document.getElementById('actionArea');
   if (!area) return;
   const disabled = inputLocked || match.finished;
+
+  if (playerHasStatus(match) && !match.finished) {
+    area.innerHTML = `
+      <div class="panel center">
+        <strong>You are ${match.player.status.effect}ed!</strong>
+        <div class="dim">You cannot act this turn.</div>
+      </div>
+      <button class="btn danger wide" id="statusSkipBtn" ${disabled ? 'disabled' : ''} style="margin-top:8px">Continue</button>
+      <div class="dim center" style="margin-top:6px">Actions left this turn: ${match.playerActionsLeft}</div>
+    `;
+    const skipBtn = document.getElementById('statusSkipBtn');
+    if (skipBtn) skipBtn.onclick = () => doAction(() => playerSkipDueToStatus(match));
+    return;
+  }
+
   area.innerHTML = `
     <div class="action-grid">
       <button class="btn" id="atkBtn" ${disabled ? 'disabled' : ''}>Attack</button>
@@ -796,7 +864,8 @@ function doAction(fn) {
 }
 
 function runEnemyBlock() {
-  const alive = match.enemies.filter((e) => e.alive);
+  const aliveEnemies = match.enemies.filter((e) => e.alive);
+  const alive = [...aliveEnemies].sort(() => Math.random() - 0.5).slice(0, ENEMY_ACTIONS_PER_ROUND);
   let i = 0;
   const step = () => {
     if (i >= alive.length || match.finished) {
@@ -854,10 +923,10 @@ function animateEvent(ev) {
   } else if (ev.kind === 'block') {
     logMsg(`${actorLabel(ev.actor)} blocks.`);
   } else if (ev.kind === 'heal') {
-    const p = positionFor('player');
+    const p = positionFor(ev.actor);
     fx.burst(p.x, p.y, '#38d67a', 26);
     fx.damageText(p.x, p.y - 20, '+' + ev.amount, '#38d67a');
-    logMsg(`You heal for ${ev.amount}.`);
+    logMsg(isPlayerActor ? `You heal for ${ev.amount}.` : `${actorLabel(ev.actor)} heals for ${ev.amount}.`);
   } else if (ev.kind === 'transform') {
     const p = positionFor('player');
     fx.burst(p.x, p.y, '#ffe94d', 50);
@@ -867,9 +936,9 @@ function animateEvent(ev) {
   } else if (ev.kind === 'debuff') {
     fx.burst(targetPos.x, targetPos.y, '#7a1aad', 20);
     fx.damageText(targetPos.x, targetPos.y - 20, ev.effect, '#c07aff');
-    logMsg(`${ev.targetName} is ${ev.effect}ed.`);
+    logMsg(ev.targetId === 'player' ? `You are ${ev.effect}ed!` : `${ev.targetName} is ${ev.effect}ed.`);
   } else if (ev.kind === 'status') {
-    logMsg(`${ev.actorName} is ${ev.effect}ed and cannot act.`);
+    logMsg(isPlayerActor ? `You are ${ev.effect}ed and cannot act!` : `${ev.actorName} is ${ev.effect}ed and cannot act.`);
   }
   updateBars();
 }

@@ -7,9 +7,19 @@ const RUSH_BASE_DMG = 8;
 const RUSH_MAX_HITS = 5;
 export const RUSH_WINDOW_START = 5000;
 export const RUSH_WINDOW_END = 6000;
+export const PLAYER_ACTIONS_PER_ROUND = 2;
+export const ENEMY_ACTIONS_PER_ROUND = 2;
+
+// Enemies can use any skill except the two race-locked transforms (Power Up
+// and Ultimate Form are explicitly Saiyan/Human-only in the player's own
+// rules, and don't fit generic mooks with no defined race).
+const ENEMY_SKILL_IDS = ['kamehameha', 'spiritSphere', 'dragonPunch', 'heal', 'kiRush', 'fierceRush', 'blindness', 'paralyse'];
+const ENEMY_SKILL_CHANCE = 0.15;
+const ENEMY_ATTACK_CHANCE = 0.5;
+const ENEMY_BLOCK_CHANCE = 0.2;
 
 export function createEnemyTrio(level) {
-  const base = 28 + level * 4.2;
+  const base = (28 + level * 4.2) * 2;
   const dmg = 5 + level * 0.7;
   const names = ['Saibaman', 'Raider', 'Henchman'];
   return [0, 1, 2].map((i) => ({
@@ -19,6 +29,7 @@ export function createEnemyTrio(level) {
     hp: Math.round(base * (0.9 + i * 0.08)),
     maxHp: Math.round(base * (0.9 + i * 0.08)),
     baseDamage: Math.round(dmg * (0.9 + i * 0.1)),
+    ki: 0, maxKi: 60,
     blocking: false,
     status: null,
     alive: true,
@@ -27,17 +38,19 @@ export function createEnemyTrio(level) {
 
 export function createMatch(character) {
   const stats = derivedStats(character);
+  const maxKi = 60;
   return {
     stats,
     player: {
       hp: stats.maxHealth, maxHp: stats.maxHealth,
-      ki: 0, maxKi: 60,
+      ki: maxKi, maxKi,
       blocking: false,
       transformStage: -1, transformBonusPct: 0, transformTurns: 0,
       blonde: false, glow: false,
+      status: null,
     },
     enemies: createEnemyTrio(character.level),
-    playerActionsLeft: 3,
+    playerActionsLeft: PLAYER_ACTIONS_PER_ROUND,
     round: 1,
     cooldowns: {},
     finished: false,
@@ -78,6 +91,20 @@ function postPlayerAction(match) { match.playerActionsLeft -= 1; }
 
 function checkWin(match) {
   if (aliveEnemies(match).length === 0) { match.finished = true; match.result = 'win'; }
+}
+
+export function playerHasStatus(match) {
+  return !!match.player.status;
+}
+
+// Consumes one player action while a blind/paralyse status is active --
+// mirrors the enemy-status handling below, but for the player's turn.
+export function playerSkipDueToStatus(match) {
+  const ev = { kind: 'status', actor: 'player', effect: match.player.status.effect };
+  match.player.status.turns -= 1;
+  if (match.player.status.turns <= 0) match.player.status = null;
+  postPlayerAction(match);
+  return [ev];
 }
 
 export function playerAttack(match, targetId) {
@@ -194,6 +221,33 @@ export function playerTurnDone(match) {
   return match.playerActionsLeft <= 0 || match.finished;
 }
 
+function enemyAffordableSkills(enemy) {
+  return ENEMY_SKILL_IDS.map((id) => skillById(id)).filter((s) => s && enemy.ki >= s.kiCost);
+}
+
+function applyEnemySkillToPlayer(match, enemy, skill) {
+  enemy.ki -= skill.kiCost;
+  const events = [];
+  if (skill.type === 'support') {
+    const heal = Math.round(enemy.maxHp * skill.healPct);
+    enemy.hp = Math.min(enemy.maxHp, enemy.hp + heal);
+    events.push({ kind: 'heal', actor: enemy.id, actorName: enemy.name, amount: heal });
+  } else if (skill.type === 'debuff') {
+    match.player.status = { effect: skill.effect, turns: skill.duration };
+    events.push({ kind: 'debuff', actor: enemy.id, actorName: enemy.name, effect: skill.effect, targetId: 'player', targetName: 'you' });
+  } else if (skill.hits) {
+    for (let i = 0; i < skill.hits; i++) {
+      const dmg = applyDamageToPlayer(match, skill.damagePerHit);
+      events.push({ kind: 'skill', actor: enemy.id, actorName: enemy.name, skillId: skill.id, dmg });
+      if (match.finished) break;
+    }
+  } else {
+    const dmg = applyDamageToPlayer(match, skill.damage);
+    events.push({ kind: 'skill', actor: enemy.id, actorName: enemy.name, skillId: skill.id, dmg });
+  }
+  return events;
+}
+
 // One action for one enemy during the enemy block.
 export function runEnemyAction(match, enemy) {
   if (!enemy.alive || match.finished) return [];
@@ -204,14 +258,19 @@ export function runEnemyAction(match, enemy) {
     return [ev];
   }
   const roll = Math.random();
+  const affordable = roll < ENEMY_SKILL_CHANCE ? enemyAffordableSkills(enemy) : [];
+  if (affordable.length > 0) {
+    const skill = affordable[Math.floor(Math.random() * affordable.length)];
+    return applyEnemySkillToPlayer(match, enemy, skill);
+  }
   const events = [];
-  if (roll < 0.6) {
+  if (roll < ENEMY_SKILL_CHANCE + ENEMY_ATTACK_CHANCE) {
     let dmg = enemy.baseDamage;
     const crit = Math.random() < 0.08;
     if (crit) dmg *= 2;
     const res = applyDamageToPlayer(match, dmg);
     events.push({ kind: 'attack', actor: enemy.id, actorName: enemy.name, dmg: res, crit });
-  } else if (roll < 0.8) {
+  } else if (roll < ENEMY_SKILL_CHANCE + ENEMY_ATTACK_CHANCE + ENEMY_BLOCK_CHANCE) {
     enemy.blocking = true;
     events.push({ kind: 'block', actor: enemy.id, actorName: enemy.name });
   } else {
@@ -236,6 +295,9 @@ export function endRound(match) {
   }
   const regen = Math.round(KI_REGEN_BASE * match.stats.kiChargeMult);
   match.player.ki = Math.min(match.player.maxKi, match.player.ki + regen);
+  for (const e of match.enemies) {
+    if (e.alive) e.ki = Math.min(e.maxKi, e.ki + KI_REGEN_BASE);
+  }
   match.round += 1;
-  match.playerActionsLeft = 3;
+  match.playerActionsLeft = PLAYER_ACTIONS_PER_ROUND;
 }

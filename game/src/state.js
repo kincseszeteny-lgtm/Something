@@ -26,6 +26,8 @@ export function newCharacter() {
     attributes: { strength: 0, health: 0, agility: 0, luck: 0, ultDamage: 0, support: 0 },
     equippedSkills: [],
     cropsPlantedAt: Date.now(),
+    ownedClothing: [],
+    equipment: { top: null, bottom: null, onePiece: null, outerwear: null },
   };
 }
 
@@ -42,12 +44,21 @@ export function saveGame(state) {
   localStorage.setItem(SAVE_KEY, JSON.stringify({ character: state.character }));
 }
 
+// Fills in fields added after a save may have been created, so older saves
+// don't crash on missing data instead of just missing the new feature.
+function withDefaults(character) {
+  if (!character.ownedClothing) character.ownedClothing = [];
+  if (!character.equipment) character.equipment = { top: null, bottom: null, onePiece: null, outerwear: null };
+  if (character.cropsPlantedAt == null) character.cropsPlantedAt = Date.now();
+  return character;
+}
+
 export function loadCharacter() {
   const raw = localStorage.getItem(SAVE_KEY);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
-    return parsed.character || null;
+    return parsed.character ? withDefaults(parsed.character) : null;
   } catch {
     return null;
   }
@@ -96,6 +107,34 @@ export function addXP(character, amount) {
   }
   if (character.level >= MAX_LEVEL) character.xp = 0;
   return levelsGained;
+}
+
+export function buyClothingItem(character, item) {
+  if (character.coins < item.cost) return false;
+  if (character.ownedClothing.includes(item.id)) return false;
+  character.coins -= item.cost;
+  character.ownedClothing.push(item.id);
+  return true;
+}
+
+export function isClothingEquipped(character, item) {
+  return character.equipment[item.slot] === item.id;
+}
+
+export function toggleEquipClothing(character, item) {
+  const eq = character.equipment;
+  if (isClothingEquipped(character, item)) {
+    eq[item.slot] = null;
+    return;
+  }
+  if (item.slot === 'onePiece') {
+    eq.onePiece = item.id;
+    eq.top = null;
+    eq.bottom = null;
+  } else {
+    eq[item.slot] = item.id;
+    eq.onePiece = null;
+  }
 }
 
 export function raceInfo(character) {

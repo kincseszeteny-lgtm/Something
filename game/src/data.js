@@ -122,3 +122,33 @@ export const MAX_HUB_LEVEL = 5;
 export const MAX_LEVEL = 100;
 export const XP_PER_KILL = 3;
 export const XP_PER_LEVEL = 10;
+
+// Clothing: 'top' and 'bottom' can be worn together; 'onePiece' covers both
+// slots at once (equipping it clears top/bottom and vice versa); 'outerwear'
+// layers on top of whatever else is worn.
+export const CLOTHING_CATEGORIES = [
+  { key: 'top', label: 'Tops' },
+  { key: 'bottom', label: 'Bottoms' },
+  { key: 'onePiece', label: 'One-Piece' },
+  { key: 'outerwear', label: 'Outerwear' },
+];
+
+export const CLOTHING_ITEMS = [
+  { id: 'tankTop', name: 'Tank Top', slot: 'top', cost: 60, color: '#f0f0f0', desc: 'Sleeveless and simple.' },
+  { id: 'trainingShirt', name: 'Training Shirt', slot: 'top', cost: 80, color: '#3a6adf', desc: 'Short-sleeved, built for sparring.' },
+  { id: 'battleVest', name: 'Battle Vest', slot: 'top', cost: 90, color: '#d8402a', desc: 'A strapped vest, open at the sides.' },
+
+  { id: 'cargoPants', name: 'Cargo Pants', slot: 'bottom', cost: 70, color: '#3d6a3a', desc: 'Loose-fitting with deep pockets.' },
+  { id: 'trainingShorts', name: 'Training Shorts', slot: 'bottom', cost: 55, color: '#26283a', desc: 'Light and easy to move in.' },
+  { id: 'combatSkirt', name: 'Combat Skirt', slot: 'bottom', cost: 75, color: '#6a2a8a', desc: 'A pleated skirt, surprisingly practical.' },
+
+  { id: 'battleDress', name: 'Battle Dress', slot: 'onePiece', cost: 140, color: '#8a2a8a', desc: 'A single flowing garment, shoulder to knee.' },
+  { id: 'jumpsuit', name: 'Jumpsuit', slot: 'onePiece', cost: 150, color: '#e08a1a', desc: 'A full-body suit with a wide belt.' },
+
+  { id: 'travelCoat', name: 'Travel Coat', slot: 'outerwear', cost: 120, color: '#6a4a2a', desc: 'Long and open-fronted, good for the road.' },
+  { id: 'battleJacket', name: 'Battle Jacket', slot: 'outerwear', cost: 130, color: '#1a1a24', desc: 'A short jacket with a stiff collar.' },
+];
+
+export function clothingById(id) {
+  return CLOTHING_ITEMS.find((c) => c.id === id);
+}

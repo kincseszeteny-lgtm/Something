@@ -18,9 +18,22 @@ Progress autosaves to `localStorage`.
   color, hairstyle, height/build sliders clamped to a Xenoverse-2-like limited
   range) → hub → skill select → full turn-based match → win/lose → XP/leveling
   → attribute upgrades → coin shop.
-- Turn-based combat: 3 player actions per round (Attack/Block/Skill/Rush)
-  followed by 3 enemy actions (one per trio member), ki regen each round,
-  blocking, critical hits from Luck, status effects (blind/paralyse).
+- Turn-based combat: 2 player actions per round (Attack/Block/Skill/Rush)
+  followed by 2 enemy actions (randomly picked from the alive trio each
+  round, so no one enemy is guaranteed to act), ki regen each round,
+  blocking, critical hits from Luck, status effects (blind/paralyse). Your
+  ki starts full (60/60) at the start of every match.
+- Enemies now have all 10 skills available (except the two race-locked
+  transforms, Power Up and Ultimate Form — those are explicitly
+  Saiyan/Human-only in the player's own rules and don't fit generic mooks
+  with no defined race) but use them rarely: each enemy has its own ki
+  pool that starts empty and regens each round, and even when affordable
+  there's only a 15% chance per turn they'll reach for a skill instead of
+  attack/block/rush. If they land Blindness or Paralyse on you, your next
+  turn(s) show a forced "you cannot act" skip instead of the usual action
+  buttons — mirroring how it already worked when you land those on them.
+  Enemy trio HP is doubled from the original scaling to compensate for
+  the extra pressure they can now put on you.
 - All 10 skills from the brief, including the 4-stage stacking Super Saiyan
   transformation (Saiyan-only, hair turns blonde) and Ultimate Form
   (Human-only, character glows), plus AoE (Spirit Sphere), multi-hit (Ki
@@ -88,10 +101,39 @@ blue bands, a distant island, no land in sight). Each is drawn once at
 `src/draw.js`), then scaled up with nearest-neighbor every frame — cheap
 even though the arena redraws constantly for the idle-bob animation.
 
+## Character customization
+
+Saiyan characters get a tail — a small curled shape at the hip, colored
+to match hair (as in the source material), drawn behind the torso/arm so
+it reads as attached rather than floating. Gender is no longer a label
+with no effect: female characters get a visibly narrower waist taper and
+a small eyelash detail; male characters keep the original proportions.
+Both are handled in `drawCharLowRes` (`src/draw.js`) via `race`/`gender`
+options threaded through from character creation, the hub, and the
+arena.
+
+## Wardrobe
+
+A new **Wardrobe** screen (button next to Attributes in the hub) sells
+and equips real clothing across all four requested categories — Tops
+(Tank Top, Training Shirt, Battle Vest), Bottoms (Cargo Pants, Training
+Shorts, Combat Skirt), One-Piece (Battle Dress, Jumpsuit), and Outerwear
+(Travel Coat, Battle Jacket) — 10 items total, each with its own pixel
+art, not a palette swap of the same shape. Tops/Bottoms can be worn
+together; equipping a One-Piece clears both (and vice versa); Outerwear
+is a separate layer on top of whatever else is worn and doesn't conflict
+with anything. Shape actually changes per item — skirts flare and leave
+calves bare, the dress covers down to the knee with its own hemline, tank
+tops leave arms bare, jackets/coats show a bit of what's underneath
+through an open front — this isn't just recoloring the base gi. Buy with
+coins in the Wardrobe screen, and the equipped result is visible
+everywhere the character renders (creation preview, hub, arena).
+Old saves from before this feature don't have `equipment`/`ownedClothing`
+fields — `loadCharacter` backfills sensible defaults so they don't crash.
+
 ## What's intentionally out of scope for this pass
 - Only 1 enemy trio "biome" exists (reskinned by level/scaling); no curated
   per-level enemy roster across all 100 levels.
-- Clothes/cosmetics are a single gi-color unlock, not a full outfit system.
 
 ## Assumptions filled in (not fully specified in the brief)
 
@@ -113,3 +155,8 @@ even though the arena redraws constantly for the idle-bob animation.
 - Crops (new, not in the original brief — added because the hub sketch
   included it): 90-second grow timer, 20–40 coins per harvest, placeholder
   values since nothing was specified.
+- Enemy skill-use odds (15% per turn when affordable) and enemy ki pool
+  (starts at 0, regens like the player's) are both judgment calls to hit
+  "use them but not frequently" — not specified numerically in the brief.
+- Wardrobe item costs (55–150 coins) and which specific garments exist in
+  each category are new, not specified beyond the four category names.

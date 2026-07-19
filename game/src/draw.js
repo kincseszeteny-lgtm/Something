@@ -3,6 +3,8 @@
 // neighbor sampling so edges stay crisp and blocky (classic retro-sprite
 // technique) rather than smooth vector shapes.
 
+import { clothingById } from './data.js';
+
 const GRID_W = 32;
 const GRID_H = 48;
 const BASE_PX = 150 / GRID_H; // keeps final on-screen size consistent with the previous, smaller grid
@@ -91,24 +93,118 @@ function drawHair(ctx, style, color, cx, topY) {
   }
 }
 
+function drawSaiyanTail(ctx, color, cx, bob) {
+  // Keep every point within the 32-wide grid (cx=16) -- a tail that curls
+  // past x=32 gets silently clipped off-canvas by the low-res sprite.
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx + 6, 36 + bob);
+  ctx.quadraticCurveTo(cx + 12, 33 + bob, cx + 11, 25 + bob);
+  ctx.quadraticCurveTo(cx + 10, 20 + bob, cx + 13, 18 + bob);
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(cx + 13, 18 + bob, 1.8, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawSkirtLegs(ctx, cx, bob, color, skin) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(cx - 6, 34 + bob); ctx.lineTo(cx + 6, 34 + bob);
+  ctx.lineTo(cx + 9, 40 + bob); ctx.lineTo(cx - 9, 40 + bob);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = shade(color, -25);
+  ctx.beginPath();
+  ctx.moveTo(cx + 3, 34 + bob); ctx.lineTo(cx + 6, 34 + bob); ctx.lineTo(cx + 9, 40 + bob); ctx.lineTo(cx + 5, 40 + bob);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = skin;
+  ctx.fillRect(cx - 5, 40 + bob, 3, 1);
+  ctx.fillRect(cx + 2, 40 + bob, 3, 1);
+}
+
+function drawDressLegs(ctx, cx, bob, skin) {
+  ctx.fillStyle = skin;
+  ctx.fillRect(cx - 5, 40 + bob, 3, 1);
+  ctx.fillRect(cx + 2, 40 + bob, 3, 1);
+}
+
+function drawDressTorso(ctx, cx, bob, color) {
+  const hi = shade(color, 35);
+  const lo = shade(color, -35);
+  ctx.fillStyle = color;
+  ctx.fillRect(cx - 9, 22 + bob, 18, 6);
+  ctx.beginPath();
+  ctx.moveTo(cx - 7, 28 + bob); ctx.lineTo(cx + 7, 28 + bob);
+  ctx.lineTo(cx + 9, 40 + bob); ctx.lineTo(cx - 9, 40 + bob);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = hi;
+  ctx.fillRect(cx - 9, 22 + bob, 3, 6);
+  ctx.fillStyle = lo;
+  ctx.fillRect(cx + 5, 22 + bob, 4, 6);
+}
+
+function drawOuterwear(ctx, id, color, cx, bob) {
+  const lo = shade(color, -30);
+  if (id === 'travelCoat') {
+    ctx.fillStyle = color;
+    ctx.fillRect(cx - 10, 21 + bob, 20, 4);
+    ctx.fillRect(cx - 10, 21 + bob, 7, 20);
+    ctx.fillRect(cx + 3, 21 + bob, 7, 20);
+    ctx.fillStyle = lo;
+    ctx.fillRect(cx - 10, 21 + bob, 2, 20);
+    ctx.fillRect(cx + 8, 21 + bob, 2, 20);
+    ctx.fillRect(cx - 4, 19 + bob, 8, 3);
+  } else if (id === 'battleJacket') {
+    ctx.fillStyle = color;
+    ctx.fillRect(cx - 10, 21 + bob, 20, 10);
+    ctx.fillStyle = lo;
+    ctx.fillRect(cx - 10, 21 + bob, 20, 3);
+    ctx.fillRect(cx - 1, 21 + bob, 2, 10);
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.moveTo(cx - 4, 19 + bob); ctx.lineTo(cx - 1, 24 + bob); ctx.lineTo(cx - 6, 23 + bob); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx + 4, 19 + bob); ctx.lineTo(cx + 1, 24 + bob); ctx.lineTo(cx + 6, 23 + bob); ctx.closePath(); ctx.fill();
+  }
+}
+
 function drawCharLowRes(ctx, opt) {
   const {
     skin, hair, hairStyle, gi, undershirt = '#1a2a4a', wrist = '#20243a',
     pants = '#262a3e', bootColor = '#14141c', bootCuff = '#33364a', buckle = '#d8c04a',
-    bob = 0,
+    bob = 0, race, gender = 'male', equipment = {},
   } = opt;
-  const giHi = shade(gi, 45);
-  const giLo = shade(gi, -45);
   const skinLo = shade(skin, -30);
   const cx = 16, headY = 13 + bob;
+  const isFemale = gender === 'female';
+
+  const onePieceItem = equipment.onePiece ? clothingById(equipment.onePiece) : null;
+  const topItem = onePieceItem ? null : (equipment.top ? clothingById(equipment.top) : null);
+  const bottomItem = onePieceItem ? null : (equipment.bottom ? clothingById(equipment.bottom) : null);
+  const outerItem = equipment.outerwear ? clothingById(equipment.outerwear) : null;
+  const legColor = bottomItem ? bottomItem.color : (onePieceItem ? onePieceItem.color : pants);
+  const torsoColor = topItem ? topItem.color : (onePieceItem ? onePieceItem.color : gi);
+  const torsoHi = shade(torsoColor, 45);
+  const torsoLo = shade(torsoColor, -45);
+  const isDress = onePieceItem?.id === 'battleDress';
 
   // legs
-  ctx.fillStyle = pants;
-  ctx.fillRect(cx - 6, 36 + bob, 3, 6);
-  ctx.fillRect(cx + 3, 36 + bob, 3, 6);
-  ctx.fillStyle = shade(pants, -25);
-  ctx.fillRect(cx - 6, 36 + bob, 1, 6);
-  ctx.fillRect(cx + 5, 36 + bob, 1, 6);
+  if (bottomItem?.id === 'combatSkirt') {
+    drawSkirtLegs(ctx, cx, bob, bottomItem.color, skin);
+  } else if (isDress) {
+    drawDressLegs(ctx, cx, bob, skin);
+  } else if (bottomItem?.id === 'trainingShorts') {
+    ctx.fillStyle = bottomItem.color;
+    ctx.fillRect(cx - 6, 36 + bob, 3, 3); ctx.fillRect(cx + 3, 36 + bob, 3, 3);
+    ctx.fillStyle = skin;
+    ctx.fillRect(cx - 6, 39 + bob, 3, 3); ctx.fillRect(cx + 3, 39 + bob, 3, 3);
+  } else {
+    ctx.fillStyle = legColor;
+    ctx.fillRect(cx - 6, 36 + bob, 3, 6);
+    ctx.fillRect(cx + 3, 36 + bob, 3, 6);
+    ctx.fillStyle = shade(legColor, -25);
+    ctx.fillRect(cx - 6, 36 + bob, 1, 6);
+    ctx.fillRect(cx + 5, 36 + bob, 1, 6);
+  }
 
   // boot cuffs + boots
   ctx.fillStyle = bootCuff;
@@ -121,11 +217,16 @@ function drawCharLowRes(ctx, opt) {
   ctx.fillRect(cx - 7, 45 + bob, 5, 1);
   ctx.fillRect(cx + 2, 45 + bob, 5, 1);
 
-  // upper arms (sleeves)
-  ctx.fillStyle = gi;
+  // tail (drawn behind the torso/arms)
+  if (race === 'saiyan') drawSaiyanTail(ctx, hair, cx, bob);
+
+  // upper arms (sleeves) -- bare if wearing a sleeveless top
+  const sleeveless = topItem?.id === 'tankTop';
+  const armColor = sleeveless ? skin : torsoColor;
+  ctx.fillStyle = armColor;
   ctx.fillRect(cx - 13, 22 + bob, 5, 9);
   ctx.fillRect(cx + 8, 22 + bob, 5, 9);
-  ctx.fillStyle = giLo;
+  ctx.fillStyle = sleeveless ? skinLo : torsoLo;
   ctx.fillRect(cx - 13, 22 + bob, 2, 9);
   ctx.fillRect(cx + 11, 22 + bob, 2, 9);
 
@@ -145,27 +246,40 @@ function drawCharLowRes(ctx, opt) {
   ctx.fillRect(cx + 8, 40 + bob, 4, 1);
 
   // torso (shoulders + waist taper) with highlight/shadow shading
-  ctx.fillStyle = gi;
-  ctx.fillRect(cx - 9, 22 + bob, 18, 6);
-  ctx.fillRect(cx - 7, 28 + bob, 14, 6);
-  ctx.fillStyle = giHi;
-  ctx.fillRect(cx - 9, 22 + bob, 3, 6);
-  ctx.fillRect(cx - 7, 28 + bob, 2, 6);
-  ctx.fillStyle = giLo;
-  ctx.fillRect(cx + 5, 22 + bob, 4, 6);
-  ctx.fillRect(cx + 4, 28 + bob, 3, 6);
+  if (isDress) {
+    drawDressTorso(ctx, cx, bob, torsoColor);
+  } else {
+    const waistW = isFemale ? 12 : 14;
+    const waistX = isFemale ? cx - 6 : cx - 7;
+    ctx.fillStyle = torsoColor;
+    ctx.fillRect(cx - 9, 22 + bob, 18, 6);
+    ctx.fillRect(waistX, 28 + bob, waistW, 6);
+    ctx.fillStyle = torsoHi;
+    ctx.fillRect(cx - 9, 22 + bob, 3, 6);
+    ctx.fillRect(waistX, 28 + bob, 2, 6);
+    ctx.fillStyle = torsoLo;
+    ctx.fillRect(cx + 5, 22 + bob, 4, 6);
+    ctx.fillRect(waistX + waistW - 3, 28 + bob, 3, 6);
+  }
 
-  // undershirt V
-  ctx.fillStyle = undershirt;
-  ctx.beginPath();
-  ctx.moveTo(cx - 3, 22 + bob); ctx.lineTo(cx + 3, 22 + bob); ctx.lineTo(cx, 29 + bob);
-  ctx.fill();
+  // undershirt V -- only for the default gi look (no separate top/one-piece worn)
+  if (!topItem && !onePieceItem) {
+    ctx.fillStyle = undershirt;
+    ctx.beginPath();
+    ctx.moveTo(cx - 3, 22 + bob); ctx.lineTo(cx + 3, 22 + bob); ctx.lineTo(cx, 29 + bob);
+    ctx.fill();
+  }
 
-  // belt + buckle
-  ctx.fillStyle = '#1a1a22';
-  ctx.fillRect(cx - 9, 34 + bob, 18, 3);
-  ctx.fillStyle = buckle;
-  ctx.fillRect(cx - 2, 34 + bob, 4, 3);
+  // belt + buckle (skipped for the dress, which has its own waistline)
+  if (!isDress) {
+    ctx.fillStyle = '#1a1a22';
+    ctx.fillRect(cx - 9, 34 + bob, 18, 3);
+    ctx.fillStyle = buckle;
+    ctx.fillRect(cx - 2, 34 + bob, 4, 3);
+  }
+
+  // outerwear layers over everything on the torso
+  if (outerItem) drawOuterwear(ctx, outerItem.id, outerItem.color, cx, bob);
 
   // neck
   ctx.fillStyle = skin;
@@ -195,6 +309,10 @@ function drawCharLowRes(ctx, opt) {
   ctx.fillStyle = '#0a0a12';
   ctx.fillRect(cx - 4, headY - 1, 1, 2);
   ctx.fillRect(cx + 3, headY - 1, 1, 2);
+  if (isFemale) {
+    ctx.fillRect(cx - 6, headY - 2, 1, 1);
+    ctx.fillRect(cx + 5, headY - 2, 1, 1);
+  }
   // mouth
   ctx.fillStyle = skinLo;
   ctx.fillRect(cx - 1, headY + 4, 2, 1);
@@ -230,6 +348,9 @@ export function drawCharacter(ctx, x, y, appearance, opts = {}) {
     hairStyle: appearance.hairStyle,
     gi: appearance.giColor,
     bob: idleBob(),
+    race: opts.race,
+    gender: opts.gender,
+    equipment: opts.equipment,
   }));
 
   ctx.save();
