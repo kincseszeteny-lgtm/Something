@@ -254,6 +254,219 @@ export function drawEnemy(ctx, x, y, seed, scale = 1) {
   }, { scale, flip: true });
 }
 
+// --- Hub pixel-art icons ---
+
+const HOUSE_PALETTES = [
+  { wall: '#8a6a4a', roof: '#5a3a2a' },
+  { wall: '#8a6a4a', roof: '#5a3a2a' },
+  { wall: '#b08860', roof: '#7a4a2a' },
+  { wall: '#b08860', roof: '#7a4a2a' },
+  { wall: '#d8b888', roof: '#8a3a2a' },
+  { wall: '#c8c8d0', roof: '#3a4a8a' },
+];
+
+function drawHouseIcon(ctx, tier) {
+  const p = HOUSE_PALETTES[Math.min(tier, HOUSE_PALETTES.length - 1)];
+  const roofLo = shade(p.roof, -30);
+  const wallLo = shade(p.wall, -25);
+  const cx = 10;
+  ctx.fillStyle = p.roof;
+  ctx.beginPath(); ctx.moveTo(cx - 9, 12); ctx.lineTo(cx, 2); ctx.lineTo(cx + 9, 12); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = roofLo;
+  ctx.beginPath(); ctx.moveTo(cx, 2); ctx.lineTo(cx + 9, 12); ctx.lineTo(cx + 6, 12); ctx.lineTo(cx, 4); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = p.wall;
+  ctx.fillRect(cx - 7, 12, 14, 10);
+  ctx.fillStyle = wallLo;
+  ctx.fillRect(cx + 3, 12, 4, 10);
+  ctx.fillStyle = '#3a2818';
+  ctx.fillRect(cx - 2, 17, 4, 5);
+  ctx.fillStyle = tier >= 1 ? '#8ad0e8' : '#4a3a2a';
+  ctx.fillRect(cx - 6, 14, 3, 3);
+  if (tier >= 3) ctx.fillRect(cx + 3, 14, 3, 3);
+  if (tier >= 2) {
+    ctx.fillStyle = '#5a5a5a';
+    ctx.fillRect(cx + 4, 2, 3, 10);
+    ctx.fillStyle = shade('#5a5a5a', 25);
+    ctx.fillRect(cx + 4, 2, 3, 2);
+  }
+  if (tier >= 5) { ctx.fillStyle = roofLo; ctx.fillRect(cx - 1, 0, 2, 3); }
+}
+
+function drawDummyIcon(ctx) {
+  const cx = 7;
+  ctx.fillStyle = '#6a4a2a';
+  ctx.fillRect(cx - 2, 14, 4, 11);
+  ctx.fillStyle = '#5a3a1a';
+  ctx.fillRect(cx - 6, 8, 12, 2);
+  ctx.fillStyle = '#c9a76a';
+  ctx.beginPath(); ctx.ellipse(cx, 8, 5, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = shade('#c9a76a', -25);
+  ctx.beginPath(); ctx.ellipse(cx + 2, 9, 3, 6, 0, -0.5, 2); ctx.fill();
+  ctx.strokeStyle = '#7a5a30'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx - 4, 4); ctx.lineTo(cx - 4, 13); ctx.stroke();
+  ctx.fillStyle = '#e04030';
+  ctx.beginPath(); ctx.arc(cx, 7, 3.4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#f0f0f0';
+  ctx.beginPath(); ctx.arc(cx, 7, 2.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#e04030';
+  ctx.beginPath(); ctx.arc(cx, 7, 1, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#d8c060';
+  ctx.fillRect(cx - 3, 0, 1, 3); ctx.fillRect(cx, -1, 1, 4); ctx.fillRect(cx + 2, 0, 1, 3);
+}
+
+function drawShopIcon(ctx) {
+  const cx = 11;
+  ctx.fillStyle = '#7a5a3a';
+  ctx.fillRect(cx - 9, 8, 18, 10);
+  ctx.fillStyle = '#5a3a20';
+  ctx.fillRect(cx - 9, 8, 18, 2);
+  const stripeColors = ['#d8402a', '#f0e0c0'];
+  for (let i = 0; i < 6; i++) {
+    ctx.fillStyle = stripeColors[i % 2];
+    ctx.beginPath();
+    ctx.moveTo(cx - 9 + i * 3, 2); ctx.lineTo(cx - 9 + (i + 1) * 3, 2);
+    ctx.lineTo(cx - 9 + (i + 1) * 3 - 1, 7); ctx.lineTo(cx - 9 + i * 3 + 1, 7);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.fillStyle = '#4a2a15';
+  ctx.fillRect(cx - 9, 0, 18, 3);
+  ctx.fillStyle = '#e8d090';
+  ctx.fillRect(cx - 4, 11, 8, 4);
+  ctx.fillStyle = '#8a6020';
+  ctx.fillRect(cx - 4, 11, 8, 1);
+  ctx.fillStyle = '#3a2a18';
+  ctx.fillRect(cx - 7, 9, 5, 5);
+  ctx.fillStyle = '#8ad0e8';
+  ctx.fillRect(cx - 6, 10, 3, 3);
+}
+
+function drawCropsIcon(ctx, ready) {
+  ctx.fillStyle = '#5a3f2a';
+  ctx.fillRect(0, 10, 24, 6);
+  ctx.fillStyle = '#4a3220';
+  for (let x = 1; x < 24; x += 4) ctx.fillRect(x, 10, 2, 6);
+  const positions = [3, 8, 13, 18];
+  for (const px of positions) {
+    if (ready) {
+      ctx.fillStyle = '#d8b830';
+      ctx.fillRect(px, 3, 2, 8);
+      ctx.fillStyle = '#f0d860';
+      ctx.beginPath(); ctx.arc(px + 1, 3, 3, 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.fillStyle = '#3a7a3a';
+      ctx.beginPath();
+      ctx.moveTo(px + 1, 10); ctx.lineTo(px - 1, 5); ctx.lineTo(px + 1, 7); ctx.lineTo(px + 3, 4); ctx.lineTo(px + 1, 8);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+}
+
+function drawPortalIcon(ctx, t) {
+  const cx = 11;
+  ctx.fillStyle = '#6a6a78';
+  ctx.fillRect(cx - 9, 6, 4, 20);
+  ctx.fillRect(cx + 5, 6, 4, 20);
+  ctx.beginPath();
+  ctx.moveTo(cx - 9, 6); ctx.quadraticCurveTo(cx, -6, cx + 9, 6);
+  ctx.lineTo(cx + 9, 10); ctx.quadraticCurveTo(cx, -1, cx - 9, 10);
+  ctx.closePath(); ctx.fillStyle = '#6a6a78'; ctx.fill();
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(cx, 17, 6, 10, 0, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.fillStyle = '#0a1a3a';
+  ctx.fillRect(cx - 8, 6, 16, 24);
+  ctx.translate(cx, 17);
+  const spiralColors = ['#3a6adf', '#6a3adf', '#8a5aff'];
+  for (let i = 0; i < 3; i++) {
+    ctx.strokeStyle = spiralColors[i];
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 3 + i * 2.2, t + i * 0.9, t + i * 0.9 + 4.2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+const HUB_ICON_SPECS = {
+  house: { w: 20, h: 24, draw: (c, opts) => drawHouseIcon(c, opts.tier || 0) },
+  dummy: { w: 14, h: 25, draw: (c) => drawDummyIcon(c) },
+  shop: { w: 22, h: 20, draw: (c) => drawShopIcon(c) },
+  crops: { w: 24, h: 16, draw: (c, opts) => drawCropsIcon(c, !!opts.ready) },
+  portal: { w: 22, h: 28, draw: (c, opts) => drawPortalIcon(c, opts.t || 0) },
+};
+
+export function drawHubIcon(ctx, type, x, y, scale, opts = {}) {
+  const spec = HUB_ICON_SPECS[type];
+  if (!spec) return;
+  const sprite = makeOutlined(spec.w, spec.h, (c) => spec.draw(c, opts));
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.translate(x, y);
+  ctx.drawImage(sprite, 0, 0, spec.w, spec.h, -spec.w * scale / 2, -spec.h * scale, spec.w * scale, spec.h * scale);
+  ctx.restore();
+}
+
+let grassTileCache = null;
+function getGrassTile() {
+  if (grassTileCache) return grassTileCache;
+  const t = document.createElement('canvas'); t.width = 16; t.height = 16;
+  const c = t.getContext('2d');
+  c.fillStyle = '#2e5a3a';
+  c.fillRect(0, 0, 16, 16);
+  const blades = [[2, 3], [3, 9], [8, 2], [10, 11], [13, 5], [5, 13], [14, 14], [1, 12]];
+  c.fillStyle = '#356848';
+  for (const [x, y] of blades) c.fillRect(x, y, 2, 2);
+  c.fillStyle = '#274a33';
+  for (const [x, y] of blades) c.fillRect(x + 3, y + 3, 1, 1);
+  grassTileCache = t;
+  return t;
+}
+
+export function drawHubGround(ctx, size) {
+  ctx.fillStyle = ctx.createPattern(getGrassTile(), 'repeat');
+  ctx.fillRect(0, 0, size, size);
+}
+
+export function drawHubPath(ctx, fromX, fromY, toX, toY, width = 26) {
+  ctx.save();
+  ctx.strokeStyle = '#6a5238';
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(fromX, fromY);
+  ctx.lineTo(toX, toY);
+  ctx.stroke();
+  ctx.strokeStyle = '#7a624a';
+  ctx.lineWidth = width - 8;
+  ctx.beginPath();
+  ctx.moveTo(fromX, fromY);
+  ctx.lineTo(toX, toY);
+  ctx.stroke();
+  ctx.restore();
+}
+
+export function drawHubFence(ctx, inset, size) {
+  const postW = 6, gap = 12, postH = 14;
+  const drawPost = (x, y, vertical) => {
+    ctx.fillStyle = '#8a6a45';
+    if (vertical) ctx.fillRect(x, y, postW, postH); else ctx.fillRect(x, y, postH, postW);
+    ctx.fillStyle = '#5a3f28';
+    if (vertical) ctx.fillRect(x, y + postH - 3, postW, 3); else ctx.fillRect(x + postH - 3, y, 3, postW);
+  };
+  ctx.strokeStyle = '#6a4a30';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(inset, inset, size - inset * 2, size - inset * 2);
+  for (let x = inset; x < size - inset - postW; x += postW + gap) {
+    drawPost(x, inset - postW / 2, false);
+    drawPost(x, size - inset - postW / 2, false);
+  }
+  for (let y = inset; y < size - inset - postW; y += postW + gap) {
+    drawPost(inset - postW / 2, y, true);
+    drawPost(size - inset - postW / 2, y, true);
+  }
+}
+
 // --- Combat FX ---
 
 export class FxLayer {

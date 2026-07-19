@@ -61,6 +61,15 @@ skill animations are still canvas VFX (particle bursts, screen shake,
 flash, floating damage numbers) layered on top, not hand-animated frames.
 See `drawCharLowRes` / `makeOutlined` in `src/draw.js`.
 
+The hub scene uses the same technique for its structures — House (with
+6 visual tiers matching upgrade level), Training Dummy, Shop, Crops
+(distinct growing/ready sprites), and Portal (an animated swirling
+vortex) are all hand-coded low-res pixel icons, not emoji, outlined and
+scaled up the same way. The ground is a tiled pixel grass texture with a
+dirt path from the portal and a wooden post-and-rail fence around the
+boundary. See `HUB_ICON_SPECS` / `drawHubGround` / `drawHubFence` in
+`src/draw.js`.
+
 ## What's intentionally out of scope for this pass
 - Only 1 enemy trio "biome" exists (reskinned by level/scaling); no curated
   per-level enemy roster across all 100 levels.

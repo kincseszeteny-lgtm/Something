@@ -12,13 +12,12 @@ import {
   playerResolveRush, playerTurnDone, runEnemyAction, endRound,
   RUSH_WINDOW_START, RUSH_WINDOW_END,
 } from './combat.js';
-import { drawCharacter, drawEnemy, FxLayer } from './draw.js';
+import { drawCharacter, drawEnemy, FxLayer, drawHubIcon, drawHubGround, drawHubPath, drawHubFence } from './draw.js';
 
 const root = document.getElementById('app');
 
 const HUB_NAMES = ['Run-down Shack', 'Small Hut', 'Modest House', 'Cozy Home', 'Fine Estate', 'Fortress'];
 const ENEMY_XS = [250, 325, 400];
-const HUB_EMOJI = ['\u{1F3DA}\u{FE0F}', '\u{1F6D6}', '\u{1F3E0}', '\u{1F3E1}', '\u{1F3D8}\u{FE0F}', '\u{1F3F0}'];
 
 const HUB_SIZE = 320;
 const HUB_BOUNDS = { minX: 22, maxX: 298, minY: 22, maxY: 298 };
@@ -27,11 +26,11 @@ const HUB_SPEED = 2.6;
 const HUB_INTERACT_RADIUS = 55;
 const CROP_GROW_MS = 90 * 1000;
 const HUB_ICONS = {
-  house: { x: 170, y: 26, r: 34 },
-  dummy: { x: 68, y: 74, r: 26 },
-  shop: { x: 22, y: 172, r: 26 },
-  crops: { x: 228, y: 168, r: 34 },
-  portal: { x: 150, y: 300, r: 30 },
+  house: { x: 170, y: 52, r: 38, scale: 1.7, ringDy: -20 },
+  dummy: { x: 65, y: 96, r: 26, scale: 2.0, ringDy: -25 },
+  shop: { x: 35, y: 190, r: 26, scale: 1.8, ringDy: -18 },
+  crops: { x: 230, y: 186, r: 32, scale: 2.0, ringDy: -16 },
+  portal: { x: 150, y: 306, r: 30, scale: 1.9, ringDy: -27 },
 };
 const HUB_KEY_MAP = {
   ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
@@ -320,37 +319,24 @@ function hubTick() {
   hubRafId = requestAnimationFrame(hubTick);
 }
 
-function drawIcon(ctx, x, y, emoji, size) {
-  ctx.font = `${size}px sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(emoji, x, y);
-}
-
 function drawHubScene(c) {
   const canvas = document.getElementById('hubScene');
   if (!canvas) { stopHubLoop(); return; }
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, HUB_SIZE, HUB_SIZE);
 
-  ctx.fillStyle = '#2e5a3a';
-  ctx.fillRect(0, 0, HUB_SIZE, HUB_SIZE);
-  ctx.fillStyle = '#345f40';
-  for (let ty = 0; ty < HUB_SIZE; ty += 20) {
-    for (let tx = (Math.round(ty / 20) % 2 === 0) ? 0 : 10; tx < HUB_SIZE; tx += 20) ctx.fillRect(tx, ty, 10, 10);
-  }
-  ctx.strokeStyle = '#7a5a3a';
-  ctx.lineWidth = 6;
-  ctx.strokeRect(13, 13, HUB_SIZE - 26, HUB_SIZE - 26);
+  drawHubGround(ctx, HUB_SIZE);
+  drawHubPath(ctx, HUB_ICONS.portal.x, HUB_ICONS.portal.y, HUB_SIZE / 2, HUB_SIZE / 2 + 10);
+  drawHubFence(ctx, 13, HUB_SIZE);
 
-  const hubIdx = Math.min(c.hubLevel, HUB_EMOJI.length - 1);
   const crops = cropsStatus(c);
+  const t = Date.now() / 400;
 
-  drawIcon(ctx, HUB_ICONS.house.x, HUB_ICONS.house.y, HUB_EMOJI[hubIdx], 44);
-  drawIcon(ctx, HUB_ICONS.dummy.x, HUB_ICONS.dummy.y, '\u{1F3AF}', 30);
-  drawIcon(ctx, HUB_ICONS.shop.x, HUB_ICONS.shop.y, '\u{1F3EA}', 30);
-  drawIcon(ctx, HUB_ICONS.crops.x, HUB_ICONS.crops.y, crops.ready ? '\u{1F33D}' : '\u{1F331}', 34);
-  drawIcon(ctx, HUB_ICONS.portal.x, HUB_ICONS.portal.y, '\u{1F300}', 34);
+  drawHubIcon(ctx, 'house', HUB_ICONS.house.x, HUB_ICONS.house.y, HUB_ICONS.house.scale, { tier: c.hubLevel });
+  drawHubIcon(ctx, 'dummy', HUB_ICONS.dummy.x, HUB_ICONS.dummy.y, HUB_ICONS.dummy.scale);
+  drawHubIcon(ctx, 'shop', HUB_ICONS.shop.x, HUB_ICONS.shop.y, HUB_ICONS.shop.scale);
+  drawHubIcon(ctx, 'crops', HUB_ICONS.crops.x, HUB_ICONS.crops.y, HUB_ICONS.crops.scale, { ready: crops.ready });
+  drawHubIcon(ctx, 'portal', HUB_ICONS.portal.x, HUB_ICONS.portal.y, HUB_ICONS.portal.scale, { t });
 
   const near = nearestHubIcon();
   if (near) {
@@ -359,7 +345,7 @@ function drawHubScene(c) {
     ctx.strokeStyle = 'rgba(255,233,77,0.85)';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(icon.x, icon.y, icon.r, 0, Math.PI * 2);
+    ctx.arc(icon.x, icon.y + (icon.ringDy || 0), icon.r, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
