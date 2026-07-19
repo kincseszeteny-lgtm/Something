@@ -32,6 +32,22 @@ Progress autosaves to `localStorage`.
   color unlocks, diamonds for a 5-tier home upgrade).
 - Enemies (a trio) scale with player level so matches get harder as you
   progress, per the brief.
+- **Walkable hub**: a real top-down scene (not a menu) you move around with
+  a d-pad or arrow/WASD keys, inside a bounded playable area with a fence
+  boundary — laid out to match the hand-drawn map: House (top), Training
+  Dummy (top-left), Shop (left wall), Crops (mid-right), Portal (bottom).
+  Walk within range of something and tap it to open a contextual panel:
+  - **House**: upgrade your home (diamonds), same 5-tier progression as
+    before, now tied to the walkable icon instead of a button.
+  - **Training Dummy**: throws a practice hit using your real current
+    stats/crit chance so you can feel out attribute upgrades without
+    spending a match.
+  - **Shop**: opens the existing shop screen.
+  - **Crops**: a small idle mechanic — plant on character creation, ready
+    to harvest for coins after a timer, then auto-replants.
+  - **Portal**: opens skill select → a match, same as before.
+  Attributes (not part of the hand-drawn map) stays a fixed button below
+  the scene since it has no natural physical location in the hub.
 
 ## Art style
 
@@ -46,10 +62,6 @@ flash, floating damage numbers) layered on top, not hand-animated frames.
 See `drawCharLowRes` / `makeOutlined` in `src/draw.js`.
 
 ## What's intentionally out of scope for this pass
-- **Hub**: currently a menu screen (Portal / Attributes / Shop buttons), not
-  a free-roam walk-around space. The brief asked for something you can "go
-  around and interact with" — that's a meaningfully bigger feature (a real
-  2D/3D explorable scene) and was left for a follow-up pass.
 - Only 1 enemy trio "biome" exists (reskinned by level/scaling); no curated
   per-level enemy roster across all 100 levels.
 - Clothes/cosmetics are a single gi-color unlock, not a full outfit system.
@@ -71,3 +83,6 @@ See `drawCharLowRes` / `makeOutlined` in `src/draw.js`.
 - Shop prices beyond skill points (100 coins, as specified) are placeholders:
   med kit 50, gi color 100, diamond 100. Match rewards: 3 XP per kill,
   40–90ish coins on a win (scales slightly with level).
+- Crops (new, not in the original brief — added because the hub sketch
+  included it): 90-second grow timer, 20–40 coins per harvest, placeholder
+  values since nothing was specified.

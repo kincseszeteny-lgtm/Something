@@ -20,6 +20,24 @@ const HUB_NAMES = ['Run-down Shack', 'Small Hut', 'Modest House', 'Cozy Home', '
 const ENEMY_XS = [250, 325, 400];
 const HUB_EMOJI = ['\u{1F3DA}\u{FE0F}', '\u{1F6D6}', '\u{1F3E0}', '\u{1F3E1}', '\u{1F3D8}\u{FE0F}', '\u{1F3F0}'];
 
+const HUB_SIZE = 320;
+const HUB_BOUNDS = { minX: 22, maxX: 298, minY: 22, maxY: 298 };
+const HUB_SPAWN = { x: 155, y: 265 };
+const HUB_SPEED = 2.6;
+const HUB_INTERACT_RADIUS = 55;
+const CROP_GROW_MS = 90 * 1000;
+const HUB_ICONS = {
+  house: { x: 170, y: 26, r: 34 },
+  dummy: { x: 68, y: 74, r: 26 },
+  shop: { x: 22, y: 172, r: 26 },
+  crops: { x: 228, y: 168, r: 34 },
+  portal: { x: 150, y: 300, r: 30 },
+};
+const HUB_KEY_MAP = {
+  ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+  w: 'up', s: 'down', a: 'left', d: 'right', W: 'up', S: 'down', A: 'left', D: 'right',
+};
+
 const state = newSaveState();
 let fx = null;
 let matchTargetId = null;
@@ -28,6 +46,15 @@ let equipSelection = [];
 let rushTimer = null;
 let rushStartedAt = 0;
 let inputLocked = false;
+
+let hubPlayer = { ...HUB_SPAWN };
+let hubFacing = false;
+let hubMoveDir = { up: false, down: false, left: false, right: false };
+let hubRafId = null;
+let hubFx = null;
+let hubPanel = null;
+let hubKeyDown = null;
+let hubKeyUp = null;
 
 function init() {
   const saved = loadCharacter();
@@ -38,7 +65,20 @@ function init() {
   render();
 }
 
+function stopHubLoop() {
+  if (hubRafId) { cancelAnimationFrame(hubRafId); hubRafId = null; }
+  if (hubKeyDown) {
+    window.removeEventListener('keydown', hubKeyDown);
+    window.removeEventListener('keyup', hubKeyUp);
+    hubKeyDown = null; hubKeyUp = null;
+  }
+  if (hubFx) { hubFx.stop(); hubFx = null; }
+  hubMoveDir = { up: false, down: false, left: false, right: false };
+  hubPanel = null;
+}
+
 function go(screen) {
+  if (state.screen === 'hub' && screen !== 'hub') stopHubLoop();
   state.screen = screen;
   render();
 }
@@ -165,51 +205,280 @@ function renderCreate(el) {
 }
 
 // ---------- HUB ----------
+function cropsStatus(c) {
+  const elapsed = Date.now() - (c.cropsPlantedAt || 0);
+  const ready = elapsed >= CROP_GROW_MS;
+  return { ready, secsLeft: Math.max(0, Math.ceil((CROP_GROW_MS - elapsed) / 1000)) };
+}
+
 function renderHub(el) {
   const c = state.character;
-  const hubIdx = Math.min(c.hubLevel, HUB_NAMES.length - 1);
   const xpPct = Math.round((c.xp / XP_PER_LEVEL) * 100);
+  hubPlayer = { ...HUB_SPAWN };
+  hubFacing = false;
+
   el.innerHTML = `
     <div class="row between">
       <div><strong>${c.name}</strong> <span class="dim">${RACES[c.race].name}</span></div>
       <div class="badge gold">Lv ${c.level}${c.level >= MAX_LEVEL ? ' MAX' : ''}</div>
     </div>
     <div class="bar-outer"><div class="bar-inner xp" style="width:${xpPct}%"></div><div class="bar-label">${c.xp}/${XP_PER_LEVEL} XP</div></div>
-
-    <div class="hub-scene">
-      <div class="hub-badge">${HUB_NAMES[hubIdx]}</div>
-      <div class="hub-house">${HUB_EMOJI[hubIdx]}</div>
-    </div>
-
-    <canvas id="hubCharCanvas" width="160" height="200" style="margin:0 auto;display:block"></canvas>
-
     <div class="row wrap" style="justify-content:center">
-      <span class="badge gold">\u{1FA99} ${c.coins} coins</span>
-      <span class="badge blue">\u{1F48E} ${c.diamonds} diamonds</span>
+      <span class="badge gold" id="hudCoins">\u{1FA99} ${c.coins} coins</span>
+      <span class="badge blue" id="hudDiamonds">\u{1F48E} ${c.diamonds} diamonds</span>
       <span class="badge">⭐ ${c.skillPoints} skill pts</span>
       <span class="badge">\u{1F9F0} ${c.meds} med kits</span>
     </div>
 
-    <button class="btn wide" id="portalBtn">\u{1F300} Enter Portal</button>
-    <div class="row">
-      <button class="btn secondary grow" id="statsBtn">Attributes</button>
-      <button class="btn secondary grow" id="shopBtn">Shop</button>
+    <div class="hub-wrap">
+      <canvas id="hubScene" width="${HUB_SIZE}" height="${HUB_SIZE}"></canvas>
+      <canvas id="hubFx" width="${HUB_SIZE}" height="${HUB_SIZE}"></canvas>
     </div>
-    ${c.diamonds >= HUB_UPGRADE_COST_DIAMONDS && c.hubLevel < MAX_HUB_LEVEL ? `<button class="btn blue wide" id="upgradeHubBtn">Upgrade Home (${HUB_UPGRADE_COST_DIAMONDS} \u{1F48E})</button>` : ''}
-  `;
-  drawCharacter(document.getElementById('hubCharCanvas').getContext('2d'), 80, 180, c.appearance, {});
+    <div id="hubHint" class="dim center" style="min-height:18px">Walk up to something and tap it to interact.</div>
+    <div id="hubPanelBox"></div>
 
-  el.querySelector('#portalBtn').onclick = () => { equipSelection = []; useMedsThisMatch = false; go('skillSelect'); };
+    <div class="dpad-wrap">
+      <div class="dpad-grid">
+        <span></span><button class="btn dpad-btn" data-dir="up">▲</button><span></span>
+        <button class="btn dpad-btn" data-dir="left">◀</button><span></span><button class="btn dpad-btn" data-dir="right">▶</button>
+        <span></span><button class="btn dpad-btn" data-dir="down">▼</button><span></span>
+      </div>
+    </div>
+
+    <button class="btn secondary wide" id="statsBtn">Attributes</button>
+  `;
+
   el.querySelector('#statsBtn').onclick = () => go('stats');
-  el.querySelector('#shopBtn').onclick = () => go('shop');
-  const upBtn = el.querySelector('#upgradeHubBtn');
-  if (upBtn) upBtn.onclick = () => {
-    if (c.diamonds < HUB_UPGRADE_COST_DIAMONDS || c.hubLevel >= MAX_HUB_LEVEL) return;
-    c.diamonds -= HUB_UPGRADE_COST_DIAMONDS;
-    c.hubLevel += 1;
-    saveGame(state);
-    renderHub(el);
-  };
+
+  el.querySelectorAll('[data-dir]').forEach((btn) => {
+    const dir = btn.dataset.dir;
+    btn.addEventListener('pointerdown', (e) => { e.preventDefault(); hubMoveDir[dir] = true; });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach((evt) => btn.addEventListener(evt, () => { hubMoveDir[dir] = false; }));
+  });
+
+  hubKeyDown = (e) => { const dir = HUB_KEY_MAP[e.key]; if (dir) { hubMoveDir[dir] = true; e.preventDefault(); } };
+  hubKeyUp = (e) => { const dir = HUB_KEY_MAP[e.key]; if (dir) hubMoveDir[dir] = false; };
+  window.addEventListener('keydown', hubKeyDown);
+  window.addEventListener('keyup', hubKeyUp);
+
+  const sceneCanvas = document.getElementById('hubScene');
+  sceneCanvas.addEventListener('click', () => {
+    const near = nearestHubIcon();
+    if (near) openHubPanel(near);
+    else flashHubHint('Move closer to something to interact.');
+  });
+
+  hubFx = new FxLayer(document.getElementById('hubFx'));
+  hubFx.start();
+
+  updateHubHint();
+  hubTick();
+}
+
+function nearestHubIcon() {
+  let best = null, bestDist = HUB_INTERACT_RADIUS;
+  for (const key of Object.keys(HUB_ICONS)) {
+    const icon = HUB_ICONS[key];
+    const dist = Math.hypot(hubPlayer.x - icon.x, hubPlayer.y - icon.y);
+    if (dist < bestDist) { best = key; bestDist = dist; }
+  }
+  return best;
+}
+
+let hubHintTimeout = null;
+function flashHubHint(text) {
+  const hint = document.getElementById('hubHint');
+  if (!hint) return;
+  hint.textContent = text;
+  clearTimeout(hubHintTimeout);
+  hubHintTimeout = setTimeout(() => { if (!hubPanel) updateHubHint(); }, 1500);
+}
+
+function updateHubHint() {
+  const hint = document.getElementById('hubHint');
+  if (!hint) return;
+  const near = nearestHubIcon();
+  const labels = { house: 'your Home', dummy: 'the Training Dummy', shop: 'the Shop', crops: 'the Crops', portal: 'the Portal' };
+  hint.textContent = near ? `Tap to interact with ${labels[near]}` : 'Walk up to something and tap it to interact.';
+}
+
+function hubTick() {
+  const c = state.character;
+  let dx = 0, dy = 0;
+  if (hubMoveDir.up) dy -= 1;
+  if (hubMoveDir.down) dy += 1;
+  if (hubMoveDir.left) dx -= 1;
+  if (hubMoveDir.right) dx += 1;
+  if (dx || dy) {
+    const len = Math.hypot(dx, dy);
+    hubPlayer.x = Math.max(HUB_BOUNDS.minX, Math.min(HUB_BOUNDS.maxX, hubPlayer.x + (dx / len) * HUB_SPEED));
+    hubPlayer.y = Math.max(HUB_BOUNDS.minY, Math.min(HUB_BOUNDS.maxY, hubPlayer.y + (dy / len) * HUB_SPEED));
+    if (dx < 0) hubFacing = true; else if (dx > 0) hubFacing = false;
+    updateHubHint();
+  }
+  drawHubScene(c);
+  hubRafId = requestAnimationFrame(hubTick);
+}
+
+function drawIcon(ctx, x, y, emoji, size) {
+  ctx.font = `${size}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(emoji, x, y);
+}
+
+function drawHubScene(c) {
+  const canvas = document.getElementById('hubScene');
+  if (!canvas) { stopHubLoop(); return; }
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, HUB_SIZE, HUB_SIZE);
+
+  ctx.fillStyle = '#2e5a3a';
+  ctx.fillRect(0, 0, HUB_SIZE, HUB_SIZE);
+  ctx.fillStyle = '#345f40';
+  for (let ty = 0; ty < HUB_SIZE; ty += 20) {
+    for (let tx = (Math.round(ty / 20) % 2 === 0) ? 0 : 10; tx < HUB_SIZE; tx += 20) ctx.fillRect(tx, ty, 10, 10);
+  }
+  ctx.strokeStyle = '#7a5a3a';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(13, 13, HUB_SIZE - 26, HUB_SIZE - 26);
+
+  const hubIdx = Math.min(c.hubLevel, HUB_EMOJI.length - 1);
+  const crops = cropsStatus(c);
+
+  drawIcon(ctx, HUB_ICONS.house.x, HUB_ICONS.house.y, HUB_EMOJI[hubIdx], 44);
+  drawIcon(ctx, HUB_ICONS.dummy.x, HUB_ICONS.dummy.y, '\u{1F3AF}', 30);
+  drawIcon(ctx, HUB_ICONS.shop.x, HUB_ICONS.shop.y, '\u{1F3EA}', 30);
+  drawIcon(ctx, HUB_ICONS.crops.x, HUB_ICONS.crops.y, crops.ready ? '\u{1F33D}' : '\u{1F331}', 34);
+  drawIcon(ctx, HUB_ICONS.portal.x, HUB_ICONS.portal.y, '\u{1F300}', 34);
+
+  const near = nearestHubIcon();
+  if (near) {
+    const icon = HUB_ICONS[near];
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,233,77,0.85)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(icon.x, icon.y, icon.r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawCharacter(ctx, hubPlayer.x, hubPlayer.y, c.appearance, { scale: 0.5, flip: hubFacing });
+}
+
+function refreshHubHud() {
+  const c = state.character;
+  const coinsEl = document.getElementById('hudCoins');
+  const diaEl = document.getElementById('hudDiamonds');
+  if (coinsEl) coinsEl.textContent = `\u{1FA99} ${c.coins} coins`;
+  if (diaEl) diaEl.textContent = `\u{1F48E} ${c.diamonds} diamonds`;
+}
+
+function openHubPanel(type) {
+  hubPanel = { type };
+  renderHubPanel();
+}
+
+function renderHubPanel() {
+  const box = document.getElementById('hubPanelBox');
+  if (!box) return;
+  if (!hubPanel) { box.innerHTML = ''; return; }
+  const c = state.character;
+
+  if (hubPanel.type === 'house') {
+    const maxed = c.hubLevel >= MAX_HUB_LEVEL;
+    const canUpgrade = !maxed && c.diamonds >= HUB_UPGRADE_COST_DIAMONDS;
+    box.innerHTML = `
+      <div class="panel col">
+        <strong>${HUB_NAMES[Math.min(c.hubLevel, HUB_NAMES.length - 1)]}</strong>
+        <div class="dim">${maxed ? 'Fully upgraded!' : `Upgrade for ${HUB_UPGRADE_COST_DIAMONDS} \u{1F48E} diamonds`}</div>
+        <div class="row">
+          ${maxed ? '' : `<button class="btn blue grow" id="panelAction" ${canUpgrade ? '' : 'disabled'}>Upgrade</button>`}
+          <button class="btn secondary grow" id="panelClose">Close</button>
+        </div>
+      </div>`;
+    const actionBtn = document.getElementById('panelAction');
+    if (actionBtn) actionBtn.onclick = () => {
+      if (c.diamonds < HUB_UPGRADE_COST_DIAMONDS || c.hubLevel >= MAX_HUB_LEVEL) return;
+      c.diamonds -= HUB_UPGRADE_COST_DIAMONDS;
+      c.hubLevel += 1;
+      saveGame(state);
+      refreshHubHud();
+      renderHubPanel();
+    };
+  } else if (hubPanel.type === 'dummy') {
+    const stats = derivedStats(c);
+    const baseDmg = Math.round(12 * stats.damageMult);
+    box.innerHTML = `
+      <div class="panel col">
+        <strong>Training Dummy</strong>
+        <div class="dim">Practice your attack and see your current damage.</div>
+        <div id="dummyResult" class="dim">&nbsp;</div>
+        <div class="row">
+          <button class="btn grow" id="panelAction">Practice Hit</button>
+          <button class="btn secondary grow" id="panelClose">Close</button>
+        </div>
+      </div>`;
+    document.getElementById('panelAction').onclick = () => {
+      const crit = Math.random() < stats.critChance;
+      const val = crit ? baseDmg * 2 : baseDmg;
+      document.getElementById('dummyResult').textContent = `You dealt ${val} damage${crit ? ' (CRITICAL!)' : ''}!`;
+      if (hubFx) {
+        hubFx.burst(HUB_ICONS.dummy.x, HUB_ICONS.dummy.y, crit ? '#ffe94d' : '#ff7a1a', crit ? 36 : 20);
+        hubFx.damageText(HUB_ICONS.dummy.x, HUB_ICONS.dummy.y - 15, '-' + val, crit ? '#ffe94d' : '#fff');
+      }
+    };
+  } else if (hubPanel.type === 'shop') {
+    box.innerHTML = `
+      <div class="panel col">
+        <strong>Shop</strong>
+        <div class="dim">Buy skill points, med kits, gi colors, and diamonds.</div>
+        <div class="row">
+          <button class="btn blue grow" id="panelAction">Enter Shop</button>
+          <button class="btn secondary grow" id="panelClose">Close</button>
+        </div>
+      </div>`;
+    document.getElementById('panelAction').onclick = () => go('shop');
+  } else if (hubPanel.type === 'crops') {
+    const status = cropsStatus(c);
+    box.innerHTML = `
+      <div class="panel col">
+        <strong>Crops</strong>
+        <div class="dim">${status.ready ? 'Ready to harvest!' : `Growing... ready in ${status.secsLeft}s`}</div>
+        <div class="row">
+          ${status.ready ? '<button class="btn blue grow" id="panelAction">Harvest</button>' : ''}
+          <button class="btn secondary grow" id="panelClose">Close</button>
+        </div>
+      </div>`;
+    const actionBtn = document.getElementById('panelAction');
+    if (actionBtn) actionBtn.onclick = () => {
+      const coins = 20 + Math.floor(Math.random() * 20);
+      c.coins += coins;
+      c.cropsPlantedAt = Date.now();
+      saveGame(state);
+      refreshHubHud();
+      if (hubFx) {
+        hubFx.burst(HUB_ICONS.crops.x, HUB_ICONS.crops.y, '#ffe94d', 30);
+        hubFx.damageText(HUB_ICONS.crops.x, HUB_ICONS.crops.y - 15, '+' + coins, '#ffe94d');
+      }
+      renderHubPanel();
+    };
+  } else if (hubPanel.type === 'portal') {
+    box.innerHTML = `
+      <div class="panel col">
+        <strong>Portal</strong>
+        <div class="dim">Step through to fight a trio of enemies.</div>
+        <div class="row">
+          <button class="btn wide" id="panelAction">Enter Portal</button>
+          <button class="btn secondary grow" id="panelClose">Close</button>
+        </div>
+      </div>`;
+    document.getElementById('panelAction').onclick = () => { equipSelection = []; useMedsThisMatch = false; go('skillSelect'); };
+  }
+
+  const closeBtn = document.getElementById('panelClose');
+  if (closeBtn) closeBtn.onclick = () => { hubPanel = null; renderHubPanel(); updateHubHint(); };
 }
 
 // ---------- STATS ----------

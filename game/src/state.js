@@ -25,6 +25,7 @@ export function newCharacter() {
     unlockedGiColors: ['#ff7a1a'],
     attributes: { strength: 0, health: 0, agility: 0, luck: 0, ultDamage: 0, support: 0 },
     equippedSkills: [],
+    cropsPlantedAt: Date.now(),
   };
 }
 
