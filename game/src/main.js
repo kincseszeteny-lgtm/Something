@@ -95,6 +95,7 @@ function stopHubLoop() {
 
 function go(screen) {
   if (state.screen === 'hub' && screen !== 'hub') stopHubLoop();
+  if (state.screen === 'match' && screen !== 'match' && fx) { fx.stop(); fx = null; }
   state.screen = screen;
   render();
 }
@@ -437,13 +438,16 @@ function renderHubPanel() {
     box.innerHTML = `
       <div class="panel col">
         <strong>Training Dummy</strong>
-        <div class="dim">Practice your attack and see your current damage.</div>
+        <div class="dim">Infinite HP, all 10 skills unlocked, exit whenever you want.</div>
+        <button class="btn blue wide" id="panelEnterTraining">Enter Training Match</button>
+        <div class="dim center">or just throw one quick hit:</div>
         <div id="dummyResult" class="dim">&nbsp;</div>
         <div class="row">
-          <button class="btn grow" id="panelAction">Practice Hit</button>
+          <button class="btn secondary grow" id="panelAction">Practice Hit</button>
           <button class="btn secondary grow" id="panelClose">Close</button>
         </div>
       </div>`;
+    document.getElementById('panelEnterTraining').onclick = () => enterPracticeMatch();
     document.getElementById('panelAction').onclick = () => {
       const crit = Math.random() < stats.critChance;
       const val = crit ? baseDmg * 2 : baseDmg;
@@ -688,11 +692,11 @@ let arenaCtx = null;
 
 let currentBattleBg = 'desert';
 
-function startMatch() {
+function startMatch(practice = false) {
   const c = state.character;
-  match = createMatch(c);
+  match = createMatch(c, { practice });
   currentBattleBg = BATTLE_BG_TYPES[Math.floor(Math.random() * BATTLE_BG_TYPES.length)];
-  if (useMedsThisMatch && c.meds > 0) {
+  if (!practice && useMedsThisMatch && c.meds > 0) {
     c.meds -= 1;
     match.player.ki = match.player.maxKi;
   }
@@ -701,10 +705,31 @@ function startMatch() {
   go('match');
 }
 
+function enterPracticeMatch() {
+  equipSelection = [];
+  useMedsThisMatch = false;
+  startMatch(true);
+}
+
+// Leaves a training match immediately, any time, with no win/lose
+// processing and no rewards -- just back to the hub.
+function exitPracticeMatch() {
+  clearInterval(rushTimer);
+  rushTimer = null;
+  inputLocked = false;
+  go('hub');
+}
+
 function renderMatch(el) {
   const c = state.character;
   el.innerHTML = `
-    <div class="row between"><strong>${c.name}</strong><span class="dim">Round ${match.round}</span></div>
+    <div class="row between">
+      <strong>${c.name}</strong>
+      ${match.practice
+        ? '<button class="btn danger small" id="exitPracticeBtn">Exit Training</button>'
+        : `<span class="dim">Round ${match.round}</span>`}
+    </div>
+    ${match.practice ? '<div class="dim center">Training Match &middot; infinite HP &middot; all skills unlocked &middot; exit any time</div>' : ''}
     <div class="bar-outer"><div class="bar-inner hp" id="playerHpBar" style="width:${pct(match.player.hp, match.player.maxHp)}%"></div><div class="bar-label" id="playerHpLabel">${match.player.hp}/${match.player.maxHp}</div></div>
     <div class="bar-outer"><div class="bar-inner ki" id="playerKiBar" style="width:${pct(match.player.ki, match.player.maxKi)}%"></div><div class="bar-label" id="playerKiLabel">Ki ${match.player.ki}/${match.player.maxKi}</div></div>
 
@@ -716,7 +741,7 @@ function renderMatch(el) {
     <div class="row wrap" id="enemyBars">
       ${match.enemies.map((e, i) => `
         <div class="grow enemy-bar-block" data-enemybtn="${e.id}" style="cursor:pointer;${matchTargetId === e.id ? 'outline:2px solid var(--gold);border-radius:6px' : ''}">
-          <div class="name">${e.name} ${e.status ? '(' + e.status.effect + ')' : ''}</div>
+          <div class="name">${e.name} ${e.status ? '(' + e.status.effect + ')' : ''}${e.practice ? ' \u{221E} HP' : ''}</div>
           <div class="bar-outer" style="height:10px"><div class="bar-inner hp" style="width:${e.alive ? pct(e.hp, e.maxHp) : 0}%"></div></div>
         </div>
       `).join('')}
@@ -738,6 +763,9 @@ function renderMatch(el) {
     const e = match.enemies.find((x) => x.id === b.dataset.enemybtn);
     if (e && e.alive) { matchTargetId = e.id; renderMatch(el); }
   });
+
+  const exitBtn = document.getElementById('exitPracticeBtn');
+  if (exitBtn) exitBtn.onclick = () => exitPracticeMatch();
 
   renderActionArea();
   renderLog();
@@ -795,9 +823,10 @@ function renderActionArea() {
 function renderSkillMenu() {
   const area = document.getElementById('actionArea');
   const c = state.character;
+  const skillIds = match.practice ? SKILLS.map((s) => s.id) : c.equippedSkills;
   area.innerHTML = `
     <div class="col">
-      ${c.equippedSkills.map((id) => {
+      ${skillIds.map((id) => {
         const s = skillById(id);
         const ok = canUseSkill(match, c, id);
         return `<button class="btn ${ok ? 'blue' : 'secondary'} wide" data-useskill="${id}" ${ok ? '' : 'disabled'}>${s.icon} ${s.name} <span class="dim">(${skillMetaLine(s)})</span></button>`;
@@ -977,7 +1006,7 @@ function updateBars() {
       const innerBar = block.querySelector('.bar-inner');
       if (innerBar) innerBar.style.width = (e.alive ? pct(e.hp, e.maxHp) : 0) + '%';
       const nameDiv = block.querySelector('.name');
-      if (nameDiv) nameDiv.textContent = `${e.name} ${e.status ? '(' + e.status.effect + ')' : ''}${!e.alive ? ' [DEFEATED]' : ''}`;
+      if (nameDiv) nameDiv.textContent = `${e.name} ${e.status ? '(' + e.status.effect + ')' : ''}${e.practice ? ' \u{221E} HP' : ''}${!e.alive ? ' [DEFEATED]' : ''}`;
     }
   });
   drawArena();

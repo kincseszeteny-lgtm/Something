@@ -52,9 +52,16 @@ Progress autosaves to `localStorage`.
   Walk within range of something and tap it to open a contextual panel:
   - **House**: upgrade your home (diamonds), same 5-tier progression as
     before, now tied to the walkable icon instead of a button.
-  - **Training Dummy**: throws a practice hit using your real current
-    stats/crit chance so you can feel out attribute upgrades without
-    spending a match.
+  - **Training Dummy**: either a quick one-off practice hit (real
+    stats/crit chance, no match needed), or **Enter Training Match** to
+    drop into an actual fight against the dummy — infinite HP (it's
+    never reduced, not just a big number, so it can never die), all 10
+    skills unlocked regardless of your chosen 4-skill loadout, and an
+    **Exit Training** button always visible so you can leave the instant
+    you're done, at any point, even mid-animation. No win/lose, no
+    XP/coins — it's a sandbox, not a real match. The dummy never attacks
+    back (always "blocks" harmlessly on its turn) so nothing here can
+    hurt you either.
   - **Shop**: opens the existing shop screen.
   - **Crops**: a small idle mechanic — plant on character creation, ready
     to harvest for coins after a timer, then auto-replants.

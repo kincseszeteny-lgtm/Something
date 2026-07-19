@@ -36,7 +36,20 @@ export function createEnemyTrio(level) {
   }));
 }
 
-export function createMatch(character) {
+export function createTrainingDummy() {
+  return {
+    id: 'dummy', name: 'Training Dummy', seed: 0,
+    hp: 100, maxHp: 100, baseDamage: 0,
+    ki: 0, maxKi: 60,
+    blocking: false, status: null, alive: true,
+    practice: true,
+  };
+}
+
+// `practice: true` drops the player into an infinite-HP, harmless training
+// match against the dummy instead of the usual trio -- no win/lose, exit
+// whenever via the UI's Exit button.
+export function createMatch(character, opts = {}) {
   const stats = derivedStats(character);
   const maxKi = 60;
   return {
@@ -49,12 +62,13 @@ export function createMatch(character) {
       blonde: false, glow: false,
       status: null,
     },
-    enemies: createEnemyTrio(character.level),
+    enemies: opts.practice ? [createTrainingDummy()] : createEnemyTrio(character.level),
     playerActionsLeft: PLAYER_ACTIONS_PER_ROUND,
     round: 1,
     cooldowns: {},
     finished: false,
     result: null,
+    practice: !!opts.practice,
   };
 }
 
@@ -73,8 +87,10 @@ function dealToEnemy(match, enemy, rawDmg, canCrit) {
   if (crit) dmg *= 2;
   if (enemy.blocking) { dmg = Math.max(0, dmg - 10); enemy.blocking = false; }
   dmg = Math.round(dmg);
-  enemy.hp = Math.max(0, enemy.hp - dmg);
-  if (enemy.hp <= 0) enemy.alive = false;
+  if (!enemy.practice) {
+    enemy.hp = Math.max(0, enemy.hp - dmg);
+    if (enemy.hp <= 0) enemy.alive = false;
+  }
   return { dmg, crit, targetId: enemy.id, targetName: enemy.name, targetDead: !enemy.alive };
 }
 
@@ -251,6 +267,10 @@ function applyEnemySkillToPlayer(match, enemy, skill) {
 // One action for one enemy during the enemy block.
 export function runEnemyAction(match, enemy) {
   if (!enemy.alive || match.finished) return [];
+  if (enemy.practice) {
+    enemy.blocking = true;
+    return [{ kind: 'block', actor: enemy.id, actorName: enemy.name }];
+  }
   if (enemy.status) {
     const ev = { kind: 'status', actor: enemy.id, actorName: enemy.name, effect: enemy.status.effect };
     enemy.status.turns -= 1;
