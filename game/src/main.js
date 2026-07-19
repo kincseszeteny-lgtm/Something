@@ -350,7 +350,7 @@ function drawHubScene(c) {
     ctx.restore();
   }
 
-  drawCharacter(ctx, hubPlayer.x, hubPlayer.y, c.appearance, { scale: 0.5, flip: hubFacing });
+  drawCharacter(ctx, hubPlayer.x, hubPlayer.y, c.appearance, { scale: 0.34, flip: hubFacing });
 }
 
 function refreshHubHud() {
