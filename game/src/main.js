@@ -12,7 +12,10 @@ import {
   playerResolveRush, playerTurnDone, runEnemyAction, endRound,
   RUSH_WINDOW_START, RUSH_WINDOW_END,
 } from './combat.js';
-import { drawCharacter, drawEnemy, FxLayer, drawHubIcon, drawHubGround, drawHubPath, drawHubFence } from './draw.js';
+import {
+  drawCharacter, drawEnemy, FxLayer, drawHubIcon, drawHubGround, drawHubPath, drawHubFence,
+  drawHubDecoration, drawGroundShadow,
+} from './draw.js';
 
 const root = document.getElementById('app');
 
@@ -33,6 +36,18 @@ const HUB_ICONS = {
   portal: { x: 150, y: 306, r: 30, scale: 1.9, ringDy: -27 },
 };
 const HUB_CENTER = { x: HUB_SIZE / 2, y: HUB_SIZE / 2 + 10 };
+const HUB_ICON_SHADOW_RX = { house: 26, dummy: 10, shop: 16, crops: 18, portal: 14 };
+const HUB_DECORATIONS = [
+  { type: 'tree', x: 265, y: 50, scale: 1.6, shadowRx: 9 },
+  { type: 'tree', x: 275, y: 260, scale: 1.6, shadowRx: 9 },
+  { type: 'tree', x: 45, y: 265, scale: 1.5, shadowRx: 8 },
+  { type: 'bush', x: 115, y: 42, scale: 1.8, shadowRx: 8 },
+  { type: 'bush', x: 260, y: 140, scale: 1.6, shadowRx: 7 },
+  { type: 'rock', x: 40, y: 230, scale: 1.8, shadowRx: 6 },
+  { type: 'flowerPatch', x: 130, y: 245, scale: 1.6, shadowRx: 0 },
+  { type: 'flowerPatch', x: 245, y: 245, scale: 1.5, shadowRx: 0 },
+  { type: 'well', x: HUB_CENTER.x, y: HUB_CENTER.y - 4, scale: 1.6, shadowRx: 11 },
+];
 const HUB_KEY_MAP = {
   ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
   w: 'up', s: 'down', a: 'left', d: 'right', W: 'up', S: 'down', A: 'left', D: 'right',
@@ -336,11 +351,26 @@ function drawHubScene(c) {
   const crops = cropsStatus(c);
   const t = Date.now() / 400;
 
-  drawHubIcon(ctx, 'house', HUB_ICONS.house.x, HUB_ICONS.house.y, HUB_ICONS.house.scale, { tier: c.hubLevel });
-  drawHubIcon(ctx, 'dummy', HUB_ICONS.dummy.x, HUB_ICONS.dummy.y, HUB_ICONS.dummy.scale);
-  drawHubIcon(ctx, 'shop', HUB_ICONS.shop.x, HUB_ICONS.shop.y, HUB_ICONS.shop.scale);
-  drawHubIcon(ctx, 'crops', HUB_ICONS.crops.x, HUB_ICONS.crops.y, HUB_ICONS.crops.scale, { ready: crops.ready });
-  drawHubIcon(ctx, 'portal', HUB_ICONS.portal.x, HUB_ICONS.portal.y, HUB_ICONS.portal.scale, { t });
+  const sortables = [
+    { x: HUB_ICONS.house.x, y: HUB_ICONS.house.y, shadowRx: HUB_ICON_SHADOW_RX.house, draw: () => drawHubIcon(ctx, 'house', HUB_ICONS.house.x, HUB_ICONS.house.y, HUB_ICONS.house.scale, { tier: c.hubLevel }) },
+    { x: HUB_ICONS.dummy.x, y: HUB_ICONS.dummy.y, shadowRx: HUB_ICON_SHADOW_RX.dummy, draw: () => drawHubIcon(ctx, 'dummy', HUB_ICONS.dummy.x, HUB_ICONS.dummy.y, HUB_ICONS.dummy.scale) },
+    { x: HUB_ICONS.shop.x, y: HUB_ICONS.shop.y, shadowRx: HUB_ICON_SHADOW_RX.shop, draw: () => drawHubIcon(ctx, 'shop', HUB_ICONS.shop.x, HUB_ICONS.shop.y, HUB_ICONS.shop.scale) },
+    { x: HUB_ICONS.crops.x, y: HUB_ICONS.crops.y, shadowRx: HUB_ICON_SHADOW_RX.crops, draw: () => drawHubIcon(ctx, 'crops', HUB_ICONS.crops.x, HUB_ICONS.crops.y, HUB_ICONS.crops.scale, { ready: crops.ready }) },
+    { x: HUB_ICONS.portal.x, y: HUB_ICONS.portal.y, shadowRx: HUB_ICON_SHADOW_RX.portal, draw: () => drawHubIcon(ctx, 'portal', HUB_ICONS.portal.x, HUB_ICONS.portal.y, HUB_ICONS.portal.scale, { t }) },
+    ...HUB_DECORATIONS.map((d) => ({
+      x: d.x, y: d.y, shadowRx: d.shadowRx,
+      draw: () => drawHubDecoration(ctx, d.type, d.x, d.y, d.scale),
+    })),
+    {
+      x: hubPlayer.x, y: hubPlayer.y, shadowRx: 10,
+      draw: () => drawCharacter(ctx, hubPlayer.x, hubPlayer.y, c.appearance, { scale: 0.34, flip: hubFacing }),
+    },
+  ];
+  sortables.sort((a, b) => a.y - b.y);
+  for (const s of sortables) {
+    if (s.shadowRx) drawGroundShadow(ctx, s.x, s.y, s.shadowRx);
+    s.draw();
+  }
 
   const near = nearestHubIcon();
   if (near) {
@@ -353,8 +383,6 @@ function drawHubScene(c) {
     ctx.stroke();
     ctx.restore();
   }
-
-  drawCharacter(ctx, hubPlayer.x, hubPlayer.y, c.appearance, { scale: 0.34, flip: hubFacing });
 }
 
 function refreshHubHud() {

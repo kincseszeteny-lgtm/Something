@@ -407,6 +407,112 @@ export function drawHubIcon(ctx, type, x, y, scale, opts = {}) {
   ctx.restore();
 }
 
+// --- Hub decorations (trees, bushes, rocks, flowers, well) ---
+
+function drawTreeIcon(ctx) {
+  const cx = 8;
+  ctx.fillStyle = '#5a3a20';
+  ctx.fillRect(cx - 2, 18, 4, 6);
+  const layers = [
+    { y: 16, w: 12, h: 8, color: '#2f6a35' },
+    { y: 10, w: 10, h: 8, color: '#357a3d' },
+    { y: 4, w: 8, h: 8, color: '#3d8a45' },
+  ];
+  for (const l of layers) {
+    ctx.fillStyle = l.color;
+    ctx.beginPath();
+    ctx.moveTo(cx - l.w / 2, l.y);
+    ctx.lineTo(cx, l.y - l.h);
+    ctx.lineTo(cx + l.w / 2, l.y);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.fillStyle = '#5cc46a';
+  ctx.beginPath(); ctx.moveTo(cx - 1, 6); ctx.lineTo(cx + 1, -2); ctx.lineTo(cx + 2, 6); ctx.closePath(); ctx.fill();
+}
+
+function drawBushIcon(ctx) {
+  const cx = 7;
+  ctx.fillStyle = '#2f6a35';
+  ctx.beginPath(); ctx.ellipse(cx - 3, 6, 4, 3.4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx + 3, 6, 4, 3.4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx, 4, 5, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#4a9a52';
+  ctx.beginPath(); ctx.ellipse(cx - 1, 2, 3, 2.2, 0, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawRockIcon(ctx) {
+  const cx = 6;
+  ctx.fillStyle = '#6a6a72';
+  ctx.beginPath();
+  ctx.moveTo(cx - 5, 7); ctx.lineTo(cx - 4, 2); ctx.lineTo(cx, 0); ctx.lineTo(cx + 4, 2); ctx.lineTo(cx + 5, 7);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#54545c';
+  ctx.beginPath();
+  ctx.moveTo(cx, 0); ctx.lineTo(cx + 4, 2); ctx.lineTo(cx + 5, 7); ctx.lineTo(cx + 1, 7); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#88888e';
+  ctx.fillRect(cx - 3, 2, 2, 1);
+}
+
+function drawFlowerPatchIcon(ctx) {
+  ctx.fillStyle = '#356a3a';
+  ctx.beginPath(); ctx.ellipse(7, 6, 7, 3, 0, 0, Math.PI * 2); ctx.fill();
+  const colors = ['#ff6a8a', '#ffd85a', '#8a6aff'];
+  const pos = [[2, 4], [5, 3], [8, 5], [11, 4]];
+  pos.forEach(([x, y], i) => {
+    ctx.fillStyle = colors[i % colors.length];
+    ctx.beginPath(); ctx.arc(x, y, 1.3, 0, Math.PI * 2); ctx.fill();
+  });
+}
+
+function drawWellIcon(ctx) {
+  const cx = 9;
+  ctx.fillStyle = '#7a7a82';
+  ctx.beginPath(); ctx.ellipse(cx, 15, 8, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#5a5a62';
+  ctx.beginPath(); ctx.ellipse(cx, 15, 8, 4, 0, 0, Math.PI); ctx.fill();
+  ctx.fillStyle = '#2a3a5a';
+  ctx.beginPath(); ctx.ellipse(cx, 13, 5, 2.4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#6a4a2a';
+  ctx.fillRect(cx - 7, 2, 3, 12);
+  ctx.fillRect(cx + 4, 2, 3, 12);
+  ctx.fillStyle = '#8a3a2a';
+  ctx.beginPath();
+  ctx.moveTo(cx - 9, 3); ctx.lineTo(cx, -4); ctx.lineTo(cx + 9, 3);
+  ctx.lineTo(cx + 9, 6); ctx.lineTo(cx, -1); ctx.lineTo(cx - 9, 6);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#4a3a2a';
+  ctx.fillRect(cx - 2, 8, 4, 3);
+}
+
+const HUB_DECOR_SPECS = {
+  tree: { w: 16, h: 26, draw: (c) => drawTreeIcon(c) },
+  bush: { w: 14, h: 10, draw: (c) => drawBushIcon(c) },
+  rock: { w: 12, h: 8, draw: (c) => drawRockIcon(c) },
+  flowerPatch: { w: 14, h: 8, draw: (c) => drawFlowerPatchIcon(c) },
+  well: { w: 18, h: 24, draw: (c) => drawWellIcon(c) },
+};
+
+export function drawHubDecoration(ctx, type, x, y, scale = 1) {
+  const spec = HUB_DECOR_SPECS[type];
+  if (!spec) return;
+  const sprite = makeOutlined(spec.w, spec.h, spec.draw);
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.translate(x, y);
+  ctx.drawImage(sprite, 0, 0, spec.w, spec.h, -spec.w * scale / 2, -spec.h * scale, spec.w * scale, spec.h * scale);
+  ctx.restore();
+}
+
+export function drawGroundShadow(ctx, x, y, rx, ry) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.32)';
+  ctx.beginPath();
+  ctx.ellipse(x, y, rx, ry ?? rx * 0.42, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 let grassTileCache = null;
 function getGrassTile() {
   if (grassTileCache) return grassTileCache;

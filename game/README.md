@@ -65,10 +65,19 @@ The hub scene uses the same technique for its structures — House (with
 6 visual tiers matching upgrade level), Training Dummy, Shop, Crops
 (distinct growing/ready sprites), and Portal (an animated swirling
 vortex) are all hand-coded low-res pixel icons, not emoji, outlined and
-scaled up the same way. The ground is a tiled pixel grass texture with a
-dirt path from the portal and a wooden post-and-rail fence around the
-boundary. See `HUB_ICON_SPECS` / `drawHubGround` / `drawHubFence` in
-`src/draw.js`.
+scaled up the same way. The ground is a tiled pixel grass texture with
+dirt paths radiating from a central point to every location, and a
+wooden post-and-rail fence around the boundary. See `HUB_ICON_SPECS` /
+`drawHubGround` / `drawHubFence` in `src/draw.js`.
+
+The hub also has decorative trees, bushes, rocks, and flower patches
+(`HUB_DECORATIONS` in `src/main.js`) plus a village well at the path
+convergence point, and real depth: every ground object (structures,
+decorations, the player) gets a soft drop shadow, and the whole scene
+is drawn in y-sorted order each frame (`drawHubScene`'s `sortables`
+list) so things lower on screen correctly draw in front of things
+higher up — the player visibly walks behind a tree they're above and
+in front of one they're below, instead of everything being flat.
 
 ## What's intentionally out of scope for this pass
 - Only 1 enemy trio "biome" exists (reskinned by level/scaling); no curated
