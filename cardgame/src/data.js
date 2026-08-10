@@ -11,6 +11,8 @@ export const STARTING_MANA_CAP = 10;
 export const MAX_BOARD_CREATURES = 5;
 export const MAX_HAND_SIZE = 10;
 export const DECK_SIZE = 30;
+export const MIN_PLAYERS = 2;
+export const MAX_PLAYERS = 8;
 
 export const CARDS = [
   // -- creatures --
@@ -30,8 +32,8 @@ export const CARDS = [
   { id: 'healingLight', name: 'Healing Light', icon: '\u{2728}', cost: 2, type: 'spell', text: 'Restore 5 life to yourself.', effects: [{ op: 'heal', amount: 5, target: 'self' }] },
   { id: 'reinforce', name: 'Reinforce', icon: '\u{1F4AA}', cost: 2, type: 'spell', text: 'Give a friendly creature +2/+2.', effects: [{ op: 'buff', attack: 2, health: 2, target: 'chosenAlly' }] },
   { id: 'insight', name: 'Insight', icon: '\u{1F4D6}', cost: 2, type: 'spell', text: 'Draw 2 cards.', effects: [{ op: 'draw', amount: 2, target: 'self' }] },
-  { id: 'lightningStrike', name: 'Lightning Strike', icon: '\u{26A1}', cost: 3, type: 'spell', text: 'Deal 5 damage straight to your opponent.', effects: [{ op: 'damage', amount: 5, target: 'opponentFace' }] },
-  { id: 'frostNova', name: 'Frost Nova', icon: '\u{2744}️', cost: 3, type: 'spell', text: 'Deal 2 damage to all enemy creatures.', effects: [{ op: 'damage', amount: 2, target: 'allEnemyCreatures' }] },
+  { id: 'lightningStrike', name: 'Lightning Strike', icon: '\u{26A1}', cost: 3, type: 'spell', text: 'Deal 5 damage straight to an opponent of your choice.', effects: [{ op: 'damage', amount: 5, target: 'chosenFace' }] },
+  { id: 'frostNova', name: 'Frost Nova', icon: '\u{2744}️', cost: 3, type: 'spell', text: "Deal 2 damage to every creature that isn't yours.", effects: [{ op: 'damage', amount: 2, target: 'allEnemyCreatures' }] },
   { id: 'fireball', name: 'Fireball', icon: '\u{2604}️', cost: 4, type: 'spell', text: 'Deal 6 damage to a creature.', effects: [{ op: 'damage', amount: 6, target: 'chosen' }] },
   { id: 'mindShatter', name: 'Mind Shatter', icon: '\u{1F4A5}', cost: 5, type: 'spell', text: 'Deal 10 damage to a creature.', effects: [{ op: 'damage', amount: 10, target: 'chosen' }] },
 ];
@@ -44,14 +46,16 @@ export function cardById(id) {
 
 // Shared by engine.js (to validate a play) and main.js (to prompt for a
 // target in the UI) so the targeting rule for a card is defined exactly once.
-// Returns 'any' (any creature on either board), 'ally' (own board only), or
-// null (no target needed).
+// Returns 'any' (any creature on any board), 'ally' (own board only), 'face'
+// (an opposing player, chosen by id -- there's more than one now), or null
+// (no target needed, e.g. a hits-everyone-but-me effect like Frost Nova).
 export function targetKindFor(card) {
   const list = card.type === 'creature' ? (card.onPlay || []) : (card.effects || []);
   for (const fx of list) {
     if (fx.op === 'buff') return 'ally';
     if (fx.op === 'damage' && fx.target === 'chosenAlly') return 'ally';
     if (fx.op === 'damage' && fx.target === 'chosen') return 'any';
+    if (fx.op === 'damage' && fx.target === 'chosenFace') return 'face';
   }
   return null;
 }
