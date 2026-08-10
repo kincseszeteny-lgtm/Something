@@ -354,6 +354,12 @@
       "sourceType": "github",
       "skillPath": ".github/skills/migration/xml-to-compose-migration/SKILL.md",
       "computedHash": "50cff8ebe440fe2b13bd1f7c06f1d30f1dffc9597aaa16fc215de9a20b5952eb"
+    },
+    "card-game": {
+      "source": "gamedev-skills/awesome-gamedev-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/genres/card-game/SKILL.md",
+      "computedHash": "00a8cf72066ba076e559db0bbe1e783d2ced8c494b7fa28fe96b75e7fc5aa1f3"
     }
   }
 }
