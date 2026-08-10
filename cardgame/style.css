@@ -1,0 +1,147 @@
+:root {
+  --purple: #8a5cff;
+  --purple-dark: #5a32c8;
+  --purple-light: #b79bff;
+  --gold: #ffe94d;
+  --bg-dark: #0c0f1c;
+  --bg-panel: #171c30;
+  --bg-panel-2: #202748;
+  --border: #2e3868;
+  --text: #f4f4fa;
+  --text-dim: #9aa0c0;
+  --danger: #e0263f;
+  --success: #38d67a;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  background: var(--bg-dark);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+}
+
+#app {
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+  max-width: 520px; margin: 0 auto; position: relative;
+  background: radial-gradient(ellipse at top, #241c4d 0%, var(--bg-dark) 65%);
+  box-shadow: 0 0 60px rgba(0,0,0,0.6);
+}
+
+.screen { padding: 14px; display: flex; flex-direction: column; gap: 12px; min-height: 100vh; }
+
+.logo {
+  font-size: 2.4em; text-align: center; margin: 40px 0 4px; font-weight: 900;
+  background: linear-gradient(180deg, #e6d9ff 0%, var(--purple-light) 35%, var(--purple) 75%, var(--purple-dark) 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  letter-spacing: 2px;
+}
+.tagline { text-align: center; color: var(--text-dim); font-style: italic; margin-bottom: 20px; }
+.menu-col { margin-top: 10px; gap: 10px; }
+
+.btn {
+  background: linear-gradient(180deg, var(--purple-light) 0%, var(--purple) 22%, var(--purple-dark) 100%);
+  color: #fff; border: none; border-radius: 10px;
+  padding: 12px 16px; font-size: 1em; font-weight: 700;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 3px 0 #3a1f8a, 0 6px 12px rgba(0,0,0,0.4);
+}
+.btn:active { transform: translateY(2px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 1px 0 #3a1f8a; }
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn.secondary { background: var(--bg-panel-2); box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 3px 0 #10142a; }
+.btn.wide { width: 100%; }
+.btn.small { padding: 7px 12px; font-size: 0.85em; }
+.btn.grow { flex: 1; }
+
+.panel { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+.col { display: flex; flex-direction: column; gap: 8px; }
+.row { display: flex; align-items: center; gap: 8px; }
+.row.between { justify-content: space-between; }
+.row.wrap { flex-wrap: wrap; }
+.center { text-align: center; }
+.dim { color: var(--text-dim); font-size: 0.9em; }
+.error { color: var(--danger); }
+
+.badge {
+  display: inline-block; background: var(--bg-panel-2); border: 1px solid var(--border);
+  border-radius: 999px; padding: 5px 12px; font-size: 0.85em; font-weight: 600;
+}
+.badge.gold { background: rgba(255,233,77,0.15); border-color: var(--gold); color: var(--gold); }
+
+.code-box {
+  width: 100%; min-height: 70px; resize: vertical;
+  background: var(--bg-panel-2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px; font-family: monospace; font-size: 0.8em;
+}
+
+.hud { padding: 4px 2px; }
+
+.opp-hand, .my-hand { min-height: 96px; gap: 6px; }
+.opp-hand { justify-content: center; }
+
+.card {
+  position: relative; width: 84px; min-height: 108px;
+  background: linear-gradient(180deg, var(--bg-panel-2), var(--bg-panel));
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 6px; font-size: 0.72em; display: flex; flex-direction: column; gap: 2px;
+}
+.card.creature { border-color: var(--purple); }
+.card.spell { border-color: var(--gold); }
+.card.card-back {
+  width: 60px; min-height: 84px;
+  background: repeating-linear-gradient(45deg, var(--bg-panel-2), var(--bg-panel-2) 6px, var(--bg-panel) 6px, var(--bg-panel) 12px);
+  border: 1px solid var(--border);
+}
+.card.clickable { cursor: pointer; }
+.card.clickable:hover { border-color: var(--purple-light); transform: translateY(-3px); }
+.card.selected { outline: 2px solid var(--gold); }
+.card-cost {
+  position: absolute; top: -6px; left: -6px; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--purple); color: #fff; font-weight: 800; font-size: 0.85em;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+}
+.card-icon { font-size: 1.4em; text-align: center; }
+.card-name { font-weight: 700; text-align: center; }
+.card-text { color: var(--text-dim); flex: 1; text-align: center; }
+.card-stats { text-align: center; font-weight: 800; color: var(--gold); }
+
+.board-zone {
+  min-height: 100px; display: flex; align-items: center; justify-content: center; gap: 8px;
+  flex-wrap: wrap; background: var(--bg-panel); border: 1px dashed var(--border); border-radius: 10px; padding: 8px;
+}
+.opp-zone { background: rgba(224,38,63,0.06); }
+.my-zone { background: rgba(56,214,122,0.06); }
+
+.zone-target { width: 0; }
+.zone-target.clickable {
+  width: 100%; text-align: center; padding: 10px; border-radius: 8px;
+  background: rgba(224,38,63,0.25); border: 1px dashed var(--danger); cursor: pointer; font-weight: 700;
+}
+
+.creature {
+  width: 76px; padding: 6px; border-radius: 8px; text-align: center;
+  background: linear-gradient(180deg, var(--bg-panel-2), var(--bg-panel)); border: 1px solid var(--border);
+}
+.creature-icon { font-size: 1.3em; }
+.creature-name { font-size: 0.68em; font-weight: 700; }
+.creature-stats { font-size: 0.8em; font-weight: 800; color: var(--gold); }
+.creature.sick { opacity: 0.55; }
+.creature.spent { opacity: 0.55; }
+.creature.clickable { cursor: pointer; }
+.creature.clickable:hover { border-color: var(--purple-light); }
+.creature.selected { outline: 2px solid var(--gold); }
+
+.prompt { padding: 6px; }
+
+.winner-banner {
+  position: sticky; top: 0; z-index: 5; background: var(--bg-panel-2); border: 1px solid var(--gold);
+  border-radius: 10px; padding: 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+
+.log-box {
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 8px; font-size: 0.78em; color: var(--text-dim); max-height: 120px; overflow-y: auto;
+}
