@@ -9,9 +9,10 @@ const root = document.getElementById('app');
 
 let screen = 'menu'; // menu | host-lobby | guest-connect | guest-lobby | board | disconnected
 let role = null; // 'host' | 'guest'
+let myName = localStorage.getItem('riftclash_name') || '';
 
 // -- host-only state --
-let seats = []; // [{ playerId, conn, code, connecting, connected, error }]
+let seats = []; // [{ playerId, conn, code, connected, name, error }]
 let matchState = null; // the one authoritative engine state, only ever touched on the host
 
 // -- guest-only state --
@@ -22,6 +23,13 @@ let snapshot = null; // the redacted view we render, on either role
 let statusMessage = '';
 let pendingAction = null; // { kind: 'playCard', uid, targetKind } | { kind: 'attack', attackerUid } | null
 let actionError = '';
+
+// Player names are user-typed (and a guest's name arrives over the wire from
+// their browser, not ours) but get interpolated straight into innerHTML
+// templates below, so they must be escaped -- otherwise a name like
+// "<img src=x onerror=...>" would execute in every player's page.
+const ESCAPE_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+function esc(str) { return String(str ?? '').replace(/[&<>"']/g, (c) => ESCAPE_MAP[c]); }
 
 function render() {
   // A render can be forced by a background event unrelated to whatever the
@@ -51,16 +59,32 @@ function render() {
 
 // ---------- menu ----------
 function renderMenu(el) {
+  const hasName = myName.trim().length > 0;
   el.innerHTML = `
     <h1 class="logo">Rift Clash</h1>
     <p class="tagline">A free-for-all card duel, up to 8 players across 8 devices — no account, no server.</p>
+    <div class="panel col">
+      <div class="dim">Your name</div>
+      <input type="text" id="nameInput" maxlength="20" placeholder="Enter your name" value="${esc(myName)}" />
+    </div>
     <div class="col menu-col">
-      <button class="btn wide" id="hostBtn">Host Game</button>
-      <button class="btn secondary wide" id="joinBtn">Join Game</button>
+      <button class="btn wide" id="hostBtn" ${hasName ? '' : 'disabled'}>Host Game</button>
+      <button class="btn secondary wide" id="joinBtn" ${hasName ? '' : 'disabled'}>Join Game</button>
+      ${hasName ? '' : '<div class="dim center">Enter a name to continue.</div>'}
     </div>
   `;
-  el.querySelector('#hostBtn').onclick = startHostFlow;
-  el.querySelector('#joinBtn').onclick = startGuestFlow;
+  const nameInput = el.querySelector('#nameInput');
+  const hostBtn = el.querySelector('#hostBtn');
+  const joinBtn = el.querySelector('#joinBtn');
+  nameInput.oninput = () => {
+    myName = nameInput.value;
+    localStorage.setItem('riftclash_name', myName);
+    const ok = myName.trim().length > 0;
+    hostBtn.disabled = !ok;
+    joinBtn.disabled = !ok;
+  };
+  hostBtn.onclick = startHostFlow;
+  joinBtn.onclick = startGuestFlow;
 }
 
 // ---------- shared teardown ----------
@@ -97,19 +121,22 @@ function startHostFlow() {
 function invitePlayer() {
   if (seats.length >= MAX_PLAYERS - 1) return;
   const seatIndex = seats.length + 2; // host is player 1
-  const seat = { playerId: `p${seatIndex}`, conn: createConnection('host-seat'), code: null, connected: false, error: '' };
+  const seat = { playerId: `p${seatIndex}`, conn: createConnection('host-seat'), code: null, connected: false, name: '', error: '' };
   seats.push(seat);
 
   onOpen(seat.conn, () => { seat.connected = true; seat.error = ''; render(); });
   onClose(seat.conn, () => {
     seat.connected = false;
     if (screen === 'board' && matchState && !matchState.players[seat.playerId]?.eliminated) {
-      statusMessage = `${seat.playerId} disconnected.`;
+      statusMessage = `${seat.name || seat.playerId} disconnected.`;
     }
     render();
   });
   onMessage(seat.conn, (msg) => {
-    if (msg.type === 'intent' && matchState) {
+    if (msg.type === 'hello') {
+      seat.name = (msg.name || '').trim() || seat.playerId;
+      render();
+    } else if (msg.type === 'intent' && matchState) {
       applyIntent(matchState, seat.playerId, msg.intent);
       broadcastSnapshots();
       render();
@@ -129,8 +156,8 @@ function renderHostLobby(el) {
   const connectedCount = 1 + seats.filter((s) => s.connected).length;
   el.innerHTML = `
     <h2 class="center">Host Game</h2>
-    <p class="dim center">You are Player 1. Invite up to 7 more players, then start whenever you're ready.</p>
-    <div class="panel row between"><strong>You (Host)</strong><span class="badge gold">Ready</span></div>
+    <p class="dim center">Invite up to 7 more players, then start whenever you're ready.</p>
+    <div class="panel row between"><strong>${esc(myName)} (Host)</strong><span class="badge gold">Ready</span></div>
     <div class="col" id="seatList"></div>
     <button class="btn secondary wide" id="inviteBtn" ${seats.length >= MAX_PLAYERS - 1 ? 'disabled' : ''}>Invite Player (${seats.length}/${MAX_PLAYERS - 1})</button>
     <button class="btn wide" id="startBtn" ${connectedCount >= 2 ? '' : 'disabled'}>Start Game (${connectedCount} players)</button>
@@ -140,13 +167,14 @@ function renderHostLobby(el) {
   seats.forEach((seat, i) => {
     const box = document.createElement('div');
     box.className = 'panel col';
+    const seatLabel = esc(seat.name || `Player ${i + 2}`);
     if (seat.connected) {
-      box.innerHTML = `<div class="row between"><strong>Player ${i + 2}</strong><span class="badge gold">Connected</span></div>`;
+      box.innerHTML = `<div class="row between"><strong>${seatLabel}</strong><span class="badge gold">Connected</span></div>`;
     } else if (!seat.code) {
-      box.innerHTML = `<div class="row between"><strong>Player ${i + 2}</strong><span class="dim">Generating code…</span></div>`;
+      box.innerHTML = `<div class="row between"><strong>${seatLabel}</strong><span class="dim">Generating code…</span></div>`;
     } else {
       box.innerHTML = `
-        <div class="row between"><strong>Player ${i + 2}</strong><span class="dim">Waiting to connect</span></div>
+        <div class="row between"><strong>${seatLabel}</strong><span class="dim">Waiting to connect</span></div>
         <div class="dim">Step 1 — send this code to them:</div>
         <textarea readonly class="code-box" id="code${i}">${seat.code}</textarea>
         <button class="btn secondary small" id="copy${i}">Copy Code</button>
@@ -178,8 +206,8 @@ function startMatch() {
   seats = connectedSeats;
 
   const playerIds = ['host', ...seats.map((s) => s.playerId)];
-  const names = { host: 'Host' };
-  seats.forEach((s, i) => { names[s.playerId] = `Player ${i + 2}`; });
+  const names = { host: myName.trim() || 'Host' };
+  seats.forEach((s, i) => { names[s.playerId] = s.name || `Player ${i + 2}`; });
 
   const seed = Math.floor(Math.random() * 0xFFFFFFFF);
   matchState = createMatch(seed, playerIds, names);
@@ -198,7 +226,10 @@ function startGuestFlow() {
   resetAll();
   role = 'guest';
   guestConn = createConnection('guest');
-  onOpen(guestConn, () => { screen = 'guest-lobby'; statusMessage = ''; render(); });
+  onOpen(guestConn, () => {
+    sendMessage(guestConn, { type: 'hello', name: myName.trim() });
+    screen = 'guest-lobby'; statusMessage = ''; render();
+  });
   onMessage(guestConn, (msg) => {
     if (msg.type === 'state') {
       snapshot = msg.snapshot;
@@ -220,6 +251,7 @@ function startGuestFlow() {
 function renderGuestConnect(el) {
   el.innerHTML = `
     <h2 class="center">Join Game</h2>
+    <p class="dim center">Joining as <strong>${esc(myName)}</strong></p>
     ${statusMessage ? `<p class="dim center">${statusMessage}</p>` : ''}
     <div class="panel col">
       <div class="dim">Step 1 — paste the host's code:</div>
@@ -334,24 +366,24 @@ function renderBoard(el) {
   el.innerHTML = `
     ${snapshot.winner ? `
       <div class="winner-banner">
-        <strong>${snapshot.winner === 'draw' ? 'Draw — everyone was eliminated.' : snapshot.winner === snapshot.me ? 'You win!' : `${snapshot.players[snapshot.winner].name} wins!`}</strong>
+        <strong>${snapshot.winner === 'draw' ? 'Draw — everyone was eliminated.' : snapshot.winner === snapshot.me ? 'You win!' : `${esc(snapshot.players[snapshot.winner].name)} wins!`}</strong>
         <button class="btn secondary small" id="menuBtn">Back to Menu</button>
       </div>` : ''}
     ${!snapshot.winner && me.eliminated ? '<div class="winner-banner"><strong>You have been eliminated — spectating.</strong></div>' : ''}
 
     <div class="row between hud">
-      <div class="badge ${isMyTurn ? 'gold' : ''}">${isMyTurn ? 'Your turn' : `${snapshot.players[snapshot.active].name}'s turn`} · Turn ${snapshot.turnNumber}</div>
+      <div class="badge ${isMyTurn ? 'gold' : ''}">${isMyTurn ? 'Your turn' : `${esc(snapshot.players[snapshot.active].name)}'s turn`} · Turn ${snapshot.turnNumber}</div>
     </div>
 
     <div class="opp-row" id="oppRow">
       ${opponentIds.map((id) => {
         const opp = snapshot.players[id];
         if (opp.eliminated) {
-          return `<div class="opp-panel eliminated"><div class="opp-name">${opp.name}</div><div class="dim">Eliminated</div></div>`;
+          return `<div class="opp-panel eliminated"><div class="opp-name">${esc(opp.name)}</div><div class="dim">Eliminated</div></div>`;
         }
         return `
           <div class="opp-panel" data-player-id="${id}">
-            <div class="opp-name">${opp.name}${snapshot.active === id ? ' \u{1F551}' : ''}</div>
+            <div class="opp-name">${esc(opp.name)}${snapshot.active === id ? ' \u{1F551}' : ''}</div>
             <div class="opp-face-target ${oppFaceClickable ? 'clickable' : ''}" data-target-player="${id}">
               ❤ ${opp.life} &middot; \u{1F4A0} ${opp.mana}/${opp.manaCap}
             </div>
@@ -383,7 +415,7 @@ function renderBoard(el) {
       return cardMarkup(c, { clickable: affordable });
     }).join('')}</div>
 
-    <div class="log-box" id="logBox">${snapshot.log.slice().reverse().slice(0, 30).map((l) => `<div>${l}</div>`).join('')}</div>
+    <div class="log-box" id="logBox">${snapshot.log.slice().reverse().slice(0, 30).map((l) => `<div>${esc(l)}</div>`).join('')}</div>
   `;
 
   const menuBtn = el.querySelector('#menuBtn');

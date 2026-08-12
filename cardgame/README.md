@@ -19,6 +19,9 @@ There's no server relaying moves. One player is the **Host**; everyone else
 connect to each other, only to the host). Each connection is its own one-time
 manual code exchange:
 
+0. Everyone types their name on the starter page first — it's what shows up
+   on their lobby seat and, in the match, on their opponent panel and in the
+   log. It's remembered on that device for next time.
 1. The host taps **Host Game**, then **Invite Player** once per other
    player joining (up to 7). Each invite generates its own connection code —
    copy it and send it to that specific player (text, chat, read it aloud).
