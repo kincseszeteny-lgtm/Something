@@ -114,11 +114,21 @@ html, body {
 .pcard.clickable:hover { transform: translateY(-3px); box-shadow: 0 5px 10px rgba(0,0,0,0.45); }
 .pcard.selected { outline: 3px solid var(--gold); transform: translateY(-5px); }
 
+/* -- board screen: table fills all leftover height, hand + log pinned below -- */
+.screen.board-screen {
+  min-height: 100dvh;
+  padding: 10px 12px 12px;
+  gap: 8px;
+}
+.screen.board-screen .hud { padding: 0; }
+.screen.board-screen .hud .badge { font-size: 0.78em; padding: 4px 10px; }
+
 /* -- the poker table -- */
 .table-wrap {
   position: relative;
   width: 100%;
-  aspect-ratio: 1 / 1.12;
+  flex: 1 0 auto;
+  min-height: 360px;
 }
 .table-felt {
   position: absolute; inset: 0;
@@ -197,4 +207,19 @@ html, body {
 .log-box {
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
   padding: 8px; font-size: 0.78em; color: var(--text-dim); max-height: 120px; overflow-y: auto;
+}
+
+/* board screen: compact fanned hand + slim log, no dead space below */
+.screen.board-screen .my-hand {
+  min-height: 0; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+  gap: 0; padding: 10px 4px 4px;
+  scrollbar-width: thin;
+}
+.screen.board-screen .my-hand .pcard { flex: 0 0 auto; }
+.screen.board-screen .my-hand .pcard + .pcard { margin-left: -16px; }
+.screen.board-screen .my-hand .pcard.selected { transform: translateY(-8px); z-index: 2; }
+.screen.board-screen .my-hand .pcard.clickable:hover { z-index: 3; }
+.screen.board-screen .log-box {
+  flex: 0 0 auto; height: 58px; font-size: 0.7em; padding: 5px 8px;
+  background: rgba(23,28,48,0.6);
 }

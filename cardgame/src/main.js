@@ -391,6 +391,7 @@ function seatPositions(n) {
 }
 
 function renderBoard(el) {
+  el.classList.add('board-screen');
   const me = snapshot.players[snapshot.me];
   // seat everyone around the table in real turn order, starting at my left
   const myIdx = snapshot.playerOrder.indexOf(snapshot.me);
