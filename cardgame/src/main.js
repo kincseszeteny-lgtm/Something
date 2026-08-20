@@ -374,9 +374,27 @@ function jokerChooserMarkup(title) {
     </div>`;
 }
 
+// Seats spread around the top arc of the oval table, in turn order starting
+// from the seat to my left. Returns {x, y} as percentages of the table box.
+function seatPositions(n) {
+  const positions = [];
+  const startDeg = 205, endDeg = -25; // sweep over the top of the oval
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? 0.5 : i / (n - 1);
+    const rad = ((startDeg + (endDeg - startDeg) * t) * Math.PI) / 180;
+    positions.push({
+      x: 50 + 42 * Math.cos(rad),
+      y: 42 - 32 * Math.sin(rad),
+    });
+  }
+  return positions;
+}
+
 function renderBoard(el) {
   const me = snapshot.players[snapshot.me];
-  const opponentIds = snapshot.playerOrder.filter((id) => id !== snapshot.me);
+  // seat everyone around the table in real turn order, starting at my left
+  const myIdx = snapshot.playerOrder.indexOf(snapshot.me);
+  const opponentIds = [...snapshot.playerOrder.slice(myIdx + 1), ...snapshot.playerOrder.slice(0, myIdx)];
   const over = !!snapshot.poopyhead;
   const isMyTurn = snapshot.active === snapshot.me && !over && !me.out && !snapshot.pendingJoker;
   const myPendingJoker = snapshot.pendingJoker && snapshot.pendingJoker.playerId === snapshot.me;
@@ -388,6 +406,7 @@ function renderBoard(el) {
     : null;
 
   const pileTop = snapshot.pile.slice(-3);
+  const seatPos = seatPositions(opponentIds.length);
 
   el.innerHTML = `
     ${over ? `
@@ -400,40 +419,55 @@ function renderBoard(el) {
 
     <div class="row between hud">
       <div class="badge ${isMyTurn ? 'gold' : ''}">${over ? 'Game over' : isMyTurn ? 'Your turn' : snapshot.pendingJoker ? `${esc(snapshot.players[snapshot.pendingJoker.playerId].name)} chooses a Joker…` : `${esc(snapshot.players[snapshot.active].name)}'s turn`}</div>
-      <div class="badge">Deck ${snapshot.drawCount} · Burned ${snapshot.burnedCount} 🔥</div>
+      <div class="badge">Burned ${snapshot.burnedCount} 🔥</div>
     </div>
 
-    <div class="opp-row" id="oppRow">
-      ${opponentIds.map((id) => {
-        const opp = snapshot.players[id];
-        return `
-          <div class="opp-panel ${opp.out ? 'safe' : ''}">
-            <div class="opp-name">${esc(opp.name)}${snapshot.active === id && !over ? ' 🕑' : ''}${opp.out ? ' 🎉' : ''}</div>
-            ${opp.out ? '<div class="dim">Safe — out of cards</div>' : `
-              <div class="dim">hand ${opp.hand.length} · hidden ${opp.faceDownCount}</div>
-              <div class="opp-table">${opp.faceUp.map((c) => pcardMarkup(c, { mini: true })).join('') || '<span class="dim">no table cards</span>'}</div>
-            `}
-          </div>`;
-      }).join('')}
-    </div>
+    <div class="table-wrap">
+      <div class="table-felt"></div>
 
-    <div class="pile-area">
-      <div class="pile-stack">
-        ${snapshot.pile.length === 0 ? '<div class="pcard pcard-empty">empty</div>' : pileTop.map((c) => pcardMarkup(c)).join('')}
+      <div class="opp-row" id="oppRow">
+        ${opponentIds.map((id, i) => {
+          const opp = snapshot.players[id];
+          const pos = seatPos[i];
+          return `
+            <div class="opp-panel seat ${opp.out ? 'safe' : ''} ${snapshot.active === id && !over ? 'active' : ''}"
+                 style="left:${pos.x.toFixed(1)}%;top:${pos.y.toFixed(1)}%">
+              <div class="opp-name">${esc(opp.name)}${opp.out ? ' 🎉' : ''}</div>
+              ${opp.out ? '<div class="dim">Safe</div>' : `
+                <div class="dim seat-counts">hand ${opp.hand.length} · hidden ${opp.faceDownCount}</div>
+                <div class="opp-table">${opp.faceUp.map((c) => pcardMarkup(c, { mini: true })).join('') || '<span class="dim">—</span>'}</div>
+              `}
+            </div>`;
+        }).join('')}
       </div>
-      <div class="dim center">
-        ${snapshot.pile.length === 0 ? 'Play anything.' : `Pile: ${snapshot.pile.length} card${snapshot.pile.length > 1 ? 's' : ''} — counts as <strong>${eff === '2' ? 'reset (anything goes)' : esc(String(eff))}</strong>${eff === 'J' ? ' (only LOWER or a Jack!)' : ''}`}
-      </div>
-    </div>
 
-    ${!me.out ? `
-      <div class="my-table">
-        <div class="dim">Your table cards${source === 'faceUp' ? ' — play one' : source === 'faceDown' ? ' — flip one blind!' : ''}</div>
-        <div class="row wrap">
-          ${me.faceUp.map((c) => pcardMarkup(c, { mini: true, clickable: isMyTurn && source === 'faceUp' && canPlayRank(eff, c.rank) })).join('')}
-          ${Array.from({ length: me.faceDownCount }, (_, i) => `<div class="pcard pcard-back mini ${isMyTurn && source === 'faceDown' ? 'clickable' : ''}" data-blind-index="${i}"></div>`).join('')}
+      <div class="table-center pile-area">
+        <div class="center-row">
+          <div class="deck-stack" title="Draw deck">
+            ${snapshot.drawCount > 0
+              ? `<div class="pcard pcard-back mini"></div><div class="pcard pcard-back mini"></div><span class="deck-count">${snapshot.drawCount}</span>`
+              : '<div class="pcard pcard-empty mini">deck</div>'}
+          </div>
+          <div class="pile-stack">
+            ${snapshot.pile.length === 0 ? '<div class="pcard pcard-empty">empty</div>' : pileTop.map((c) => pcardMarkup(c)).join('')}
+          </div>
         </div>
-      </div>` : ''}
+        <div class="pile-caption">
+          ${snapshot.pile.length === 0 ? 'Play anything.' : `${snapshot.pile.length} card${snapshot.pile.length > 1 ? 's' : ''} — counts as <strong>${eff === '2' ? 'reset' : esc(String(eff))}</strong>${eff === 'J' ? ' (lower only!)' : ''}`}
+        </div>
+      </div>
+
+      ${!me.out ? `
+        <div class="my-table seat my-seat ${isMyTurn ? 'active' : ''}">
+          <div class="opp-name">${esc(me.name)} (you)</div>
+          <div class="row" style="gap:4px;justify-content:center">
+            ${me.faceUp.map((c) => pcardMarkup(c, { mini: true, clickable: isMyTurn && source === 'faceUp' && canPlayRank(eff, c.rank) })).join('')}
+            ${Array.from({ length: me.faceDownCount }, (_, i) => `<div class="pcard pcard-back mini ${isMyTurn && source === 'faceDown' ? 'clickable' : ''}" data-blind-index="${i}"></div>`).join('')}
+          </div>
+          ${source === 'faceUp' ? '<div class="dim seat-hintline">play a table card</div>' : source === 'faceDown' ? '<div class="dim seat-hintline">flip one blind!</div>' : ''}
+        </div>` : `
+        <div class="my-table seat my-seat safe"><div class="opp-name">${esc(me.name)} 🎉</div><div class="dim">Safe</div></div>`}
+    </div>
 
     ${myPendingJoker ? jokerChooserMarkup('You flipped a Joker! What does it become?') : ''}
     ${jokerPrompt ? jokerChooserMarkup('What does your Joker become?') : ''}
