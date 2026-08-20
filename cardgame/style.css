@@ -102,9 +102,27 @@ html, body {
   position: absolute; bottom: 2px; font-size: 0.55em; color: var(--purple-dark);
   background: rgba(138,92,255,0.15); border-radius: 4px; padding: 0 3px;
 }
+/* classic red poker back: white frame around a striped red core */
 .pcard-back {
-  background: repeating-linear-gradient(45deg, #3a2f7a, #3a2f7a 5px, #2a2258 5px, #2a2258 10px);
-  border-color: #4a3f96;
+  background: repeating-linear-gradient(45deg, #a12028, #a12028 4px, #b82a33 4px, #b82a33 8px);
+  border-color: #7e161d;
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,0.9), 0 2px 5px rgba(0,0,0,0.35);
+}
+
+/* opponents' hands: a little fan of backs floating above the seat plate */
+.seat-hand {
+  position: absolute; bottom: calc(100% + 1px); left: 50%; transform: translateX(-50%);
+  display: flex; align-items: flex-end;
+}
+.seat-hand .pcard-back.back-sm {
+  width: 19px; height: 27px; border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.9), 0 1px 3px rgba(0,0,0,0.4);
+}
+.seat-hand .pcard-back.back-sm + .pcard-back.back-sm { margin-left: -9px; }
+.seat-hand .seat-hand-more {
+  margin-left: 3px; align-self: center;
+  background: rgba(10,14,26,0.85); border: 1px solid var(--border); border-radius: 999px;
+  font-size: 0.6em; font-weight: 700; padding: 0 5px;
 }
 .pcard-empty {
   background: transparent; border: 1px dashed var(--border); box-shadow: none;

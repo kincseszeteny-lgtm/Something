@@ -433,6 +433,11 @@ function renderBoard(el) {
           return `
             <div class="opp-panel seat ${opp.out ? 'safe' : ''} ${snapshot.active === id && !over ? 'active' : ''}"
                  style="left:${pos.x.toFixed(1)}%;top:${pos.y.toFixed(1)}%">
+              ${!opp.out && opp.hand.length > 0 ? `
+                <div class="seat-hand">
+                  ${Array.from({ length: Math.min(opp.hand.length, 8) }, () => '<div class="pcard pcard-back back-sm"></div>').join('')}
+                  ${opp.hand.length > 8 ? `<span class="seat-hand-more">${opp.hand.length}</span>` : ''}
+                </div>` : ''}
               <div class="opp-name">${esc(opp.name)}${opp.out ? ' 🎉' : ''}</div>
               ${opp.out ? '<div class="dim">Safe</div>' : `
                 <div class="dim seat-counts">hand ${opp.hand.length} · hidden ${opp.faceDownCount}</div>
