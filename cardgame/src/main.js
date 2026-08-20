@@ -1,4 +1,4 @@
-import { cardById, targetKindFor, MAX_PLAYERS } from './data.js';
+import { canPlayRank, isRedSuit, RANKS, VALUE, MAX_PLAYERS } from './data.js';
 import { createMatch, applyIntent, redactStateFor } from './engine.js';
 import {
   createConnection, onOpen, onMessage, onClose, sendMessage,
@@ -21,8 +21,11 @@ let guestCode = null;
 
 let snapshot = null; // the redacted view we render, on either role
 let statusMessage = '';
-let pendingAction = null; // { kind: 'playCard', uid, targetKind } | { kind: 'attack', attackerUid } | null
 let actionError = '';
+
+// -- board interaction state --
+let selectedUids = []; // hand cards currently selected (all one rank)
+let jokerPrompt = null; // { uids } -- a joker play from hand/faceUp awaiting its rank choice
 
 // Player names are user-typed (and a guest's name arrives over the wire from
 // their browser, not ours) but get interpolated straight into innerHTML
@@ -61,8 +64,8 @@ function render() {
 function renderMenu(el) {
   const hasName = myName.trim().length > 0;
   el.innerHTML = `
-    <h1 class="logo">Rift Clash</h1>
-    <p class="tagline">A free-for-all card duel, up to 8 players across 8 devices — no account, no server.</p>
+    <h1 class="logo">Poopyhead</h1>
+    <p class="tagline">The classic card game — don't be the last one holding cards! Up to 8 players across 8 devices, no account, no server.</p>
     <div class="panel col">
       <div class="dim">Your name</div>
       <input type="text" id="nameInput" maxlength="20" placeholder="Enter your name" value="${esc(myName)}" />
@@ -92,7 +95,7 @@ function resetAll() {
   for (const seat of seats) if (seat.conn && seat.conn.pc) seat.conn.pc.close();
   if (guestConn && guestConn.pc) guestConn.pc.close();
   seats = []; matchState = null; snapshot = null; guestConn = null; guestCode = null;
-  statusMessage = ''; pendingAction = null; actionError = '';
+  statusMessage = ''; actionError = ''; selectedUids = []; jokerPrompt = null;
 }
 
 function backToMenu() {
@@ -124,10 +127,18 @@ function invitePlayer() {
   const seat = { playerId: `p${seatIndex}`, conn: createConnection('host-seat'), code: null, connected: false, name: '', error: '' };
   seats.push(seat);
 
-  onOpen(seat.conn, () => { seat.connected = true; seat.error = ''; render(); });
+  onOpen(seat.conn, () => {
+    seat.connected = true; seat.error = '';
+    // Ask for the guest's name instead of only trusting their unprompted
+    // hello: a message sent in the same instant a channel opens can race
+    // the other side's setup, and a seat stuck nameless all game is worth
+    // the second, explicitly-requested hello.
+    sendMessage(seat.conn, { type: 'whoAreYou' });
+    render();
+  });
   onClose(seat.conn, () => {
     seat.connected = false;
-    if (screen === 'board' && matchState && !matchState.players[seat.playerId]?.eliminated) {
+    if (screen === 'board' && matchState && !matchState.players[seat.playerId]?.out) {
       statusMessage = `${seat.name || seat.playerId} disconnected.`;
     }
     render();
@@ -135,6 +146,14 @@ function invitePlayer() {
   onMessage(seat.conn, (msg) => {
     if (msg.type === 'hello') {
       seat.name = (msg.name || '').trim() || seat.playerId;
+      // A hello can arrive after the host already started the match (the
+      // host clicked Start in the instant between the channel opening and
+      // the guest's name landing) -- patch the live match so the player
+      // isn't stuck as "Player N" all game.
+      if (matchState && matchState.players[seat.playerId]) {
+        matchState.players[seat.playerId].name = seat.name;
+        broadcastSnapshots();
+      }
       render();
     } else if (msg.type === 'intent' && matchState) {
       applyIntent(matchState, seat.playerId, msg.intent);
@@ -156,7 +175,7 @@ function renderHostLobby(el) {
   const connectedCount = 1 + seats.filter((s) => s.connected).length;
   el.innerHTML = `
     <h2 class="center">Host Game</h2>
-    <p class="dim center">Invite up to 7 more players, then start whenever you're ready.</p>
+    <p class="dim center">Invite up to 7 more players, then start whenever you're ready. 5+ players are dealt from two decks.</p>
     <div class="panel row between"><strong>${esc(myName)} (Host)</strong><span class="badge gold">Ready</span></div>
     <div class="col" id="seatList"></div>
     <button class="btn secondary wide" id="inviteBtn" ${seats.length >= MAX_PLAYERS - 1 ? 'disabled' : ''}>Invite Player (${seats.length}/${MAX_PLAYERS - 1})</button>
@@ -231,10 +250,12 @@ function startGuestFlow() {
     screen = 'guest-lobby'; statusMessage = ''; render();
   });
   onMessage(guestConn, (msg) => {
-    if (msg.type === 'state') {
+    if (msg.type === 'whoAreYou') {
+      sendMessage(guestConn, { type: 'hello', name: myName.trim() });
+    } else if (msg.type === 'state') {
       snapshot = msg.snapshot;
       screen = 'board';
-      pendingAction = null;
+      selectedUids = selectedUids.filter((uid) => snapshot.players[snapshot.me].hand.some((c) => c.uid === uid));
       actionError = '';
       render();
     }
@@ -310,110 +331,130 @@ function renderDisconnected(el) {
 // ---------- board ----------
 function submitIntent(intent) {
   actionError = '';
+  selectedUids = [];
+  jokerPrompt = null;
   if (role === 'host') {
     const res = applyIntent(matchState, 'host', intent);
-    if (!res.ok) { actionError = res.reason; pendingAction = null; render(); return; }
-    pendingAction = null;
+    if (!res.ok) { actionError = res.reason; render(); return; }
     broadcastSnapshots();
     render();
   } else {
     sendMessage(guestConn, { type: 'intent', intent });
-    pendingAction = null;
-    render(); // optimistic UI clear; the board itself updates when the host's snapshot arrives
+    render(); // the board itself updates when the host's snapshot arrives
   }
 }
 
-function cancelPending() { pendingAction = null; actionError = ''; render(); }
+const RANK_LABEL = { JOKER: '🃏' };
+function rankLabel(rank) { return RANK_LABEL[rank] || rank; }
 
-function cardMarkup(inst, { clickable, selected } = {}) {
-  if (inst.hidden) return `<div class="card card-back"></div>`;
-  const card = cardById(inst.cardId);
-  const statLine = card.type === 'creature' ? `<div class="card-stats">${card.attack} / ${card.health}</div>` : '';
+function pcardMarkup(card, { clickable = false, selected = false, mini = false } = {}) {
+  if (card.hidden || card.facedown) {
+    return `<div class="pcard pcard-back ${mini ? 'mini' : ''} ${clickable ? 'clickable' : ''}" ${card.uid ? `data-uid="${card.uid}"` : ''}></div>`;
+  }
+  const joker = card.rank === 'JOKER';
+  const red = joker ? false : isRedSuit(card.suit);
+  const chosen = joker && card.chosenRank ? `<div class="pcard-chosen">= ${card.chosenRank}</div>` : '';
   return `
-    <div class="card ${card.type} ${clickable ? 'clickable' : ''} ${selected ? 'selected' : ''}" data-card-uid="${inst.uid}">
-      <div class="card-cost">${card.cost}</div>
-      <div class="card-icon">${card.icon}</div>
-      <div class="card-name">${card.name}</div>
-      <div class="card-text">${card.text}</div>
-      ${statLine}
+    <div class="pcard ${red ? 'red' : ''} ${joker ? 'joker' : ''} ${mini ? 'mini' : ''} ${clickable ? 'clickable' : ''} ${selected ? 'selected' : ''}" data-uid="${card.uid}">
+      <div class="pcard-rank">${rankLabel(card.rank)}</div>
+      <div class="pcard-suit">${joker ? 'JOKER' : card.suit}</div>
+      ${chosen}
     </div>`;
 }
 
-function creatureMarkup(creature, { clickable, selected, mini } = {}) {
-  const card = cardById(creature.cardId);
-  const tags = [];
-  if (creature.sick) tags.push('sick');
-  if (creature.attackedThisTurn) tags.push('spent');
-  if (mini) tags.push('mini');
+function sortedHand(hand) {
+  return [...hand].sort((a, b) => (VALUE[a.rank] || 15) - (VALUE[b.rank] || 15));
+}
+
+function jokerChooserMarkup(title) {
   return `
-    <div class="creature ${clickable ? 'clickable' : ''} ${selected ? 'selected' : ''} ${tags.join(' ')}" data-creature-uid="${creature.uid}">
-      <div class="creature-icon">${card.icon}</div>
-      <div class="creature-name">${card.name}</div>
-      <div class="creature-stats">${creature.attack} / ${creature.health}</div>
+    <div class="panel col joker-chooser">
+      <strong>${title}</strong>
+      <div class="row wrap">${RANKS.map((r) => `<button class="btn small secondary" data-joker-rank="${r}">${r}</button>`).join('')}</div>
     </div>`;
 }
 
 function renderBoard(el) {
   const me = snapshot.players[snapshot.me];
   const opponentIds = snapshot.playerOrder.filter((id) => id !== snapshot.me);
-  const isMyTurn = snapshot.active === snapshot.me && !snapshot.winner && !me.eliminated;
+  const over = !!snapshot.poopyhead;
+  const isMyTurn = snapshot.active === snapshot.me && !over && !me.out && !snapshot.pendingJoker;
+  const myPendingJoker = snapshot.pendingJoker && snapshot.pendingJoker.playerId === snapshot.me;
+  const eff = snapshot.effective;
+  const source = snapshot.source;
 
-  const attackTargetMode = pendingAction && pendingAction.kind === 'attack';
-  const targetKind = pendingAction && pendingAction.kind === 'playCard' ? pendingAction.targetKind : null;
-  const oppCreatureClickable = attackTargetMode || targetKind === 'any';
-  const oppFaceClickable = attackTargetMode || targetKind === 'face';
+  const selectedRank = selectedUids.length > 0
+    ? me.hand.find((c) => c.uid === selectedUids[0])?.rank
+    : null;
+
+  const pileTop = snapshot.pile.slice(-3);
 
   el.innerHTML = `
-    ${snapshot.winner ? `
+    ${over ? `
       <div class="winner-banner">
-        <strong>${snapshot.winner === 'draw' ? 'Draw — everyone was eliminated.' : snapshot.winner === snapshot.me ? 'You win!' : `${esc(snapshot.players[snapshot.winner].name)} wins!`}</strong>
+        <strong>${snapshot.poopyhead === snapshot.me ? 'You are the POOPYHEAD! 💩' : `${esc(snapshot.players[snapshot.poopyhead].name)} is the POOPYHEAD! 💩`}</strong>
         <button class="btn secondary small" id="menuBtn">Back to Menu</button>
       </div>` : ''}
-    ${!snapshot.winner && me.eliminated ? '<div class="winner-banner"><strong>You have been eliminated — spectating.</strong></div>' : ''}
+    ${!over && me.out ? '<div class="winner-banner"><strong>You\'re safe! 🎉 Watching the rest fight it out…</strong></div>' : ''}
+    ${statusMessage ? `<div class="dim center error">${esc(statusMessage)}</div>` : ''}
 
     <div class="row between hud">
-      <div class="badge ${isMyTurn ? 'gold' : ''}">${isMyTurn ? 'Your turn' : `${esc(snapshot.players[snapshot.active].name)}'s turn`} · Turn ${snapshot.turnNumber}</div>
+      <div class="badge ${isMyTurn ? 'gold' : ''}">${over ? 'Game over' : isMyTurn ? 'Your turn' : snapshot.pendingJoker ? `${esc(snapshot.players[snapshot.pendingJoker.playerId].name)} chooses a Joker…` : `${esc(snapshot.players[snapshot.active].name)}'s turn`}</div>
+      <div class="badge">Deck ${snapshot.drawCount} · Burned ${snapshot.burnedCount} 🔥</div>
     </div>
 
     <div class="opp-row" id="oppRow">
       ${opponentIds.map((id) => {
         const opp = snapshot.players[id];
-        if (opp.eliminated) {
-          return `<div class="opp-panel eliminated"><div class="opp-name">${esc(opp.name)}</div><div class="dim">Eliminated</div></div>`;
-        }
         return `
-          <div class="opp-panel" data-player-id="${id}">
-            <div class="opp-name">${esc(opp.name)}${snapshot.active === id ? ' \u{1F551}' : ''}</div>
-            <div class="opp-face-target ${oppFaceClickable ? 'clickable' : ''}" data-target-player="${id}">
-              ❤ ${opp.life} &middot; \u{1F4A0} ${opp.mana}/${opp.manaCap}
-            </div>
-            <div class="dim">deck ${opp.deckCount} &middot; hand ${opp.hand.length}</div>
-            <div class="opp-board">${opp.board.map((c) => creatureMarkup(c, { clickable: oppCreatureClickable, mini: true })).join('')}</div>
+          <div class="opp-panel ${opp.out ? 'safe' : ''}">
+            <div class="opp-name">${esc(opp.name)}${snapshot.active === id && !over ? ' 🕑' : ''}${opp.out ? ' 🎉' : ''}</div>
+            ${opp.out ? '<div class="dim">Safe — out of cards</div>' : `
+              <div class="dim">hand ${opp.hand.length} · hidden ${opp.faceDownCount}</div>
+              <div class="opp-table">${opp.faceUp.map((c) => pcardMarkup(c, { mini: true })).join('') || '<span class="dim">no table cards</span>'}</div>
+            `}
           </div>`;
       }).join('')}
     </div>
 
-    <div class="board-zone my-zone" id="myBoard">
-      ${me.board.map((c) => {
-        const eligible = isMyTurn && !pendingAction && !c.sick && !c.attackedThisTurn;
-        const targetable = targetKind === 'ally' || targetKind === 'any';
-        return creatureMarkup(c, { clickable: eligible || targetable, selected: pendingAction && pendingAction.attackerUid === c.uid });
-      }).join('')}
+    <div class="pile-area">
+      <div class="pile-stack">
+        ${snapshot.pile.length === 0 ? '<div class="pcard pcard-empty">empty</div>' : pileTop.map((c) => pcardMarkup(c)).join('')}
+      </div>
+      <div class="dim center">
+        ${snapshot.pile.length === 0 ? 'Play anything.' : `Pile: ${snapshot.pile.length} card${snapshot.pile.length > 1 ? 's' : ''} — counts as <strong>${eff === '2' ? 'reset (anything goes)' : esc(String(eff))}</strong>${eff === 'J' ? ' (only LOWER or a Jack!)' : ''}`}
+      </div>
     </div>
 
-    <div class="row between hud">
-      <div class="badge">You ❤ ${me.life} &middot; \u{1F4A0} ${me.mana}/${me.manaCap} &middot; deck ${me.deckCount}</div>
-      ${isMyTurn ? '<button class="btn small" id="endTurnBtn">End Turn</button>' : ''}
-    </div>
+    ${!me.out ? `
+      <div class="my-table">
+        <div class="dim">Your table cards${source === 'faceUp' ? ' — play one' : source === 'faceDown' ? ' — flip one blind!' : ''}</div>
+        <div class="row wrap">
+          ${me.faceUp.map((c) => pcardMarkup(c, { mini: true, clickable: isMyTurn && source === 'faceUp' && canPlayRank(eff, c.rank) })).join('')}
+          ${Array.from({ length: me.faceDownCount }, (_, i) => `<div class="pcard pcard-back mini ${isMyTurn && source === 'faceDown' ? 'clickable' : ''}" data-blind-index="${i}"></div>`).join('')}
+        </div>
+      </div>` : ''}
 
-    ${pendingAction ? `<div class="dim center prompt">${pendingAction.kind === 'attack' ? 'Choose an opponent (or one of their creatures) to attack.' : 'Choose a target for this card.'} <button class="btn secondary small" id="cancelBtn">Cancel</button></div>` : ''}
-    ${actionError ? `<div class="dim center error">${actionError}</div>` : ''}
+    ${myPendingJoker ? jokerChooserMarkup('You flipped a Joker! What does it become?') : ''}
+    ${jokerPrompt ? jokerChooserMarkup('What does your Joker become?') : ''}
 
-    <div class="row wrap my-hand" id="myHand">${me.hand.map((c) => {
-      const card = cardById(c.cardId);
-      const affordable = isMyTurn && !pendingAction && me.mana >= card.cost;
-      return cardMarkup(c, { clickable: affordable });
-    }).join('')}</div>
+    ${actionError ? `<div class="dim center error">${esc(actionError)}</div>` : ''}
+
+    ${!me.out && source === 'hand' ? `
+      <div class="row between hud">
+        <div class="dim">Your hand (${me.hand.length})</div>
+        <div class="row">
+          ${snapshot.canPickUp && isMyTurn ? '<button class="btn danger small" id="pickUpBtn">Pick Up Pile</button>' : ''}
+          ${selectedUids.length > 0 ? `<button class="btn small" id="playBtn">Play ${selectedUids.length > 1 ? selectedUids.length + 'x ' : ''}${rankLabel(selectedRank)}</button>` : ''}
+        </div>
+      </div>
+      <div class="row wrap my-hand" id="myHand">
+        ${sortedHand(me.hand).map((c) => pcardMarkup(c, {
+          clickable: isMyTurn && !jokerPrompt,
+          selected: selectedUids.includes(c.uid),
+        })).join('')}
+      </div>` : ''}
+    ${!me.out && source === 'faceUp' && snapshot.canPickUp && isMyTurn ? '<button class="btn danger wide" id="pickUpBtn">No playable table card — Pick Up Pile</button>' : ''}
 
     <div class="log-box" id="logBox">${snapshot.log.slice().reverse().slice(0, 30).map((l) => `<div>${esc(l)}</div>`).join('')}</div>
   `;
@@ -421,55 +462,70 @@ function renderBoard(el) {
   const menuBtn = el.querySelector('#menuBtn');
   if (menuBtn) menuBtn.onclick = backToMenu;
 
-  const endTurnBtn = el.querySelector('#endTurnBtn');
-  if (endTurnBtn) endTurnBtn.onclick = () => submitIntent({ type: 'endTurn' });
+  const pickUpBtn = el.querySelector('#pickUpBtn');
+  if (pickUpBtn) pickUpBtn.onclick = () => submitIntent({ type: 'pickUp' });
 
-  const cancelBtn = el.querySelector('#cancelBtn');
-  if (cancelBtn) cancelBtn.onclick = cancelPending;
-
-  el.querySelectorAll('#myHand [data-card-uid]').forEach((cardEl) => {
-    if (!isMyTurn || pendingAction) return;
+  // hand selection: click selects that rank; clicking more of the same rank
+  // adds them; a different rank starts a fresh selection
+  el.querySelectorAll('#myHand .pcard.clickable').forEach((cardEl) => {
     cardEl.onclick = () => {
-      const uid = cardEl.dataset.cardUid;
-      const inst = me.hand.find((c) => c.uid === uid);
-      const card = cardById(inst.cardId);
-      if (me.mana < card.cost) return;
-      const kind = targetKindFor(card);
-      if (!kind) { submitIntent({ type: 'playCard', uid }); return; }
-      pendingAction = { kind: 'playCard', uid, targetKind: kind };
+      const uid = cardEl.dataset.uid;
+      const card = me.hand.find((c) => c.uid === uid);
+      if (!card) return;
+      if (selectedUids.includes(uid)) {
+        selectedUids = selectedUids.filter((u) => u !== uid);
+      } else if (selectedRank && card.rank === selectedRank) {
+        selectedUids.push(uid);
+      } else {
+        selectedUids = [uid];
+      }
       render();
     };
   });
 
-  if (attackTargetMode) {
-    el.querySelectorAll('.opp-face-target.clickable').forEach((z) => {
-      z.onclick = () => submitIntent({ type: 'attack', attackerUid: pendingAction.attackerUid, targetPlayerId: z.dataset.targetPlayer, targetUid: 'face' });
-    });
-    el.querySelectorAll('.opp-board [data-creature-uid]').forEach((c) => {
-      c.onclick = () => {
-        const panel = c.closest('.opp-panel');
-        submitIntent({ type: 'attack', attackerUid: pendingAction.attackerUid, targetPlayerId: panel.dataset.playerId, targetUid: c.dataset.creatureUid });
+  const playBtn = el.querySelector('#playBtn');
+  if (playBtn) playBtn.onclick = () => {
+    if (selectedUids.length === 0) return;
+    if (selectedRank === 'JOKER') { jokerPrompt = { uids: [...selectedUids] }; render(); return; }
+    submitIntent({ type: 'playCards', uids: [...selectedUids] });
+  };
+
+  // face-up plays (one per turn)
+  if (isMyTurn && source === 'faceUp') {
+    el.querySelectorAll('.my-table .pcard.clickable').forEach((cardEl) => {
+      cardEl.onclick = () => {
+        const uid = cardEl.dataset.uid;
+        const card = me.faceUp.find((c) => c.uid === uid);
+        if (!card) return;
+        if (card.rank === 'JOKER') { jokerPrompt = { uids: [uid] }; render(); return; }
+        submitIntent({ type: 'playCards', uids: [uid] });
       };
     });
-  } else if (targetKind === 'face') {
-    el.querySelectorAll('.opp-face-target.clickable').forEach((z) => {
-      z.onclick = () => submitIntent({ type: 'playCard', uid: pendingAction.uid, targetPlayerId: z.dataset.targetPlayer });
-    });
-  } else if (targetKind === 'any') {
-    el.querySelectorAll('#myBoard [data-creature-uid], .opp-board [data-creature-uid]').forEach((c) => {
-      c.onclick = () => submitIntent({ type: 'playCard', uid: pendingAction.uid, targetUid: c.dataset.creatureUid });
-    });
-  } else if (targetKind === 'ally') {
-    el.querySelectorAll('#myBoard [data-creature-uid]').forEach((c) => {
-      c.onclick = () => submitIntent({ type: 'playCard', uid: pendingAction.uid, targetUid: c.dataset.creatureUid });
-    });
-  } else if (isMyTurn && !pendingAction) {
-    el.querySelectorAll('#myBoard [data-creature-uid]').forEach((c) => {
-      const creature = me.board.find((cr) => cr.uid === c.dataset.creatureUid);
-      if (!creature || creature.sick || creature.attackedThisTurn) return;
-      c.onclick = () => { pendingAction = { kind: 'attack', attackerUid: creature.uid }; render(); };
+  }
+
+  // blind face-down flips: the UI only knows a count, so map the clicked
+  // back's position onto the real card host-side via a position-less pick --
+  // the host resolves by uid, so ask it for the uids via the snapshot? Face-
+  // down uids are hidden; instead the intent carries an index and the host
+  // picks that card. See 'playBlindIndex' translation below.
+  if (isMyTurn && source === 'faceDown') {
+    el.querySelectorAll('[data-blind-index]').forEach((backEl) => {
+      backEl.onclick = () => submitIntent({ type: 'playBlindIndex', index: Number(backEl.dataset.blindIndex) });
     });
   }
+
+  // joker rank choosers
+  el.querySelectorAll('[data-joker-rank]').forEach((btn) => {
+    btn.onclick = () => {
+      const rank = btn.dataset.jokerRank;
+      if (myPendingJoker) { submitIntent({ type: 'chooseJokerRank', rank }); return; }
+      if (jokerPrompt) {
+        const uids = jokerPrompt.uids;
+        jokerPrompt = null;
+        submitIntent({ type: 'playCards', uids, jokerRank: rank });
+      }
+    };
+  });
 }
 
 render();

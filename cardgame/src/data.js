@@ -1,90 +1,59 @@
-// Static card data: every card is plain data + a list of effects, interpreted
-// by the resolver in engine.js (one interpreter for every card, not a
-// function per card — see the card-game skill, Pattern 2).
-//
-// effect ops supported by engine.js's resolveEffect: 'damage', 'heal', 'draw', 'buff'.
-// effect targets: 'chosen' (any creature, chosen by the caster), 'chosenAlly',
-// 'opponentFace', 'allEnemyCreatures', 'self' (the caster's hero).
+// Static card data for Poopyhead: standard French decks plus the shared
+// play-legality rule. Both engine.js (to validate a play) and main.js (to
+// show which cards are playable) import canPlayRank, so the special-card
+// rules are defined exactly once.
 
-export const STARTING_LIFE = 20;
-export const STARTING_MANA_CAP = 10;
-export const MAX_BOARD_CREATURES = 5;
-export const MAX_HAND_SIZE = 10;
-export const DECK_SIZE = 30;
 export const MIN_PLAYERS = 2;
 export const MAX_PLAYERS = 8;
 
-export const CARDS = [
-  // -- creatures --
-  { id: 'sparkImp', name: 'Spark Imp', icon: '\u{1F47A}', cost: 1, type: 'creature', attack: 1, health: 2, text: 'A pesky imp crackling with static.' },
-  { id: 'shieldNovice', name: 'Shield Novice', icon: '\u{1F6E1}️', cost: 1, type: 'creature', attack: 1, health: 3, text: 'Trained to take the first hit.' },
-  { id: 'quickBlade', name: 'Quick Blade', icon: '\u{1F5E1}️', cost: 2, type: 'creature', attack: 3, health: 1, text: 'Fast and fragile.' },
-  { id: 'stonehide', name: 'Stonehide Golem', icon: '\u{1F5FF}', cost: 2, type: 'creature', attack: 2, health: 4, text: 'Slow but sturdy.' },
-  { id: 'riverSprite', name: 'River Sprite', icon: '\u{1F4A7}', cost: 2, type: 'creature', attack: 2, health: 2, text: 'Draws you a card when it enters play.', onPlay: [{ op: 'draw', amount: 1, target: 'self' }] },
-  { id: 'direWolf', name: 'Dire Wolf', icon: '\u{1F43A}', cost: 3, type: 'creature', attack: 4, health: 3, text: 'Hunts as soon as it lands.' },
-  { id: 'flameAdept', name: 'Flame Adept', icon: '\u{1F525}', cost: 3, type: 'creature', attack: 3, health: 4, text: 'Channels raw fire.' },
-  { id: 'ironSentinel', name: 'Iron Sentinel', icon: '\u{2699}️', cost: 4, type: 'creature', attack: 4, health: 6, text: 'A wall of iron.' },
-  { id: 'stormDrake', name: 'Storm Drake', icon: '\u{1F409}', cost: 5, type: 'creature', attack: 6, health: 5, text: 'Commands the sky.' },
-  { id: 'ancientTitan', name: 'Ancient Titan', icon: '\u{1F5FB}', cost: 6, type: 'creature', attack: 7, health: 8, text: 'A colossus from a forgotten age.' },
+// 5 or more players -> two decks, otherwise one.
+export const TWO_DECK_THRESHOLD = 5;
 
-  // -- spells --
-  { id: 'firebolt', name: 'Firebolt', icon: '\u{1F525}', cost: 1, type: 'spell', text: 'Deal 3 damage to a creature.', effects: [{ op: 'damage', amount: 3, target: 'chosen' }] },
-  { id: 'healingLight', name: 'Healing Light', icon: '\u{2728}', cost: 2, type: 'spell', text: 'Restore 5 life to yourself.', effects: [{ op: 'heal', amount: 5, target: 'self' }] },
-  { id: 'reinforce', name: 'Reinforce', icon: '\u{1F4AA}', cost: 2, type: 'spell', text: 'Give a friendly creature +2/+2.', effects: [{ op: 'buff', attack: 2, health: 2, target: 'chosenAlly' }] },
-  { id: 'insight', name: 'Insight', icon: '\u{1F4D6}', cost: 2, type: 'spell', text: 'Draw 2 cards.', effects: [{ op: 'draw', amount: 2, target: 'self' }] },
-  { id: 'lightningStrike', name: 'Lightning Strike', icon: '\u{26A1}', cost: 3, type: 'spell', text: 'Deal 5 damage straight to an opponent of your choice.', effects: [{ op: 'damage', amount: 5, target: 'chosenFace' }] },
-  { id: 'frostNova', name: 'Frost Nova', icon: '\u{2744}️', cost: 3, type: 'spell', text: "Deal 2 damage to every creature that isn't yours.", effects: [{ op: 'damage', amount: 2, target: 'allEnemyCreatures' }] },
-  { id: 'fireball', name: 'Fireball', icon: '\u{2604}️', cost: 4, type: 'spell', text: 'Deal 6 damage to a creature.', effects: [{ op: 'damage', amount: 6, target: 'chosen' }] },
-  { id: 'mindShatter', name: 'Mind Shatter', icon: '\u{1F4A5}', cost: 5, type: 'spell', text: 'Deal 10 damage to a creature.', effects: [{ op: 'damage', amount: 10, target: 'chosen' }] },
-];
+export const SUITS = ['♠', '♥', '♦', '♣']; // spades hearts diamonds clubs
+export const RED_SUITS = ['♥', '♦'];
 
-export function cardById(id) {
-  const c = CARDS.find((card) => card.id === id);
-  if (!c) throw new Error(`Unknown card id: ${id}`);
-  return c;
+// Normal ordering, low to high. JOKER is handled separately (wild).
+export const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+export const VALUE = { 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 10, J: 11, Q: 12, K: 13, A: 14 };
+
+export const JOKERS_PER_DECK = 2;
+
+export const SPECIAL_TEXT = {
+  2: 'Plays on anything and resets the pile — the next player can play any card.',
+  4: 'Skips the next player. No special placement power — like any normal card it can only go on 4 or lower.',
+  7: 'Mirror: the pile keeps the value of whatever is underneath it. Plays on anything.',
+  10: 'Burns the whole pile out of the game. Plays on anything.',
+  J: 'Locks the pile: the next play must be LOWER than a Jack (or another Jack).',
+  JOKER: 'Wild: plays on anything, and becomes any rank you choose — with that rank\'s powers.',
+};
+
+export function deckCountFor(playerCount) {
+  return playerCount >= TWO_DECK_THRESHOLD ? 2 : 1;
 }
 
-// Shared by engine.js (to validate a play) and main.js (to prompt for a
-// target in the UI) so the targeting rule for a card is defined exactly once.
-// Returns 'any' (any creature on any board), 'ally' (own board only), 'face'
-// (an opposing player, chosen by id -- there's more than one now), or null
-// (no target needed, e.g. a hits-everyone-but-me effect like Frost Nova).
-export function targetKindFor(card) {
-  const list = card.type === 'creature' ? (card.onPlay || []) : (card.effects || []);
-  for (const fx of list) {
-    if (fx.op === 'buff') return 'ally';
-    if (fx.op === 'damage' && fx.target === 'chosenAlly') return 'ally';
-    if (fx.op === 'damage' && fx.target === 'chosen') return 'any';
-    if (fx.op === 'damage' && fx.target === 'chosenFace') return 'face';
+// Returns plain {rank, suit} descriptors; the engine assigns uids.
+export function buildDecks(playerCount) {
+  const cards = [];
+  for (let d = 0; d < deckCountFor(playerCount); d++) {
+    for (const suit of SUITS) for (const rank of RANKS) cards.push({ rank, suit });
+    for (let j = 0; j < JOKERS_PER_DECK; j++) cards.push({ rank: 'JOKER', suit: null });
   }
-  return null;
+  return cards;
 }
 
-// Preset 30-card decklist shared by both players (no deckbuilding/collection
-// meta in this pass -- see plan). Weighted toward the cheap end of the curve.
-export const DECKLIST = [
-  { id: 'sparkImp', count: 2 },
-  { id: 'shieldNovice', count: 2 },
-  { id: 'firebolt', count: 2 },
-  { id: 'quickBlade', count: 2 },
-  { id: 'stonehide', count: 2 },
-  { id: 'riverSprite', count: 2 },
-  { id: 'healingLight', count: 2 },
-  { id: 'reinforce', count: 2 },
-  { id: 'insight', count: 2 },
-  { id: 'direWolf', count: 2 },
-  { id: 'flameAdept', count: 2 },
-  { id: 'lightningStrike', count: 2 },
-  { id: 'frostNova', count: 1 },
-  { id: 'ironSentinel', count: 1 },
-  { id: 'fireball', count: 1 },
-  { id: 'stormDrake', count: 1 },
-  { id: 'mindShatter', count: 1 },
-  { id: 'ancientTitan', count: 1 },
-];
+// The one legality rule. `effectiveRank` is the pile's resolved top rank
+// (null for an empty pile; 7s already resolved down to what they mirror;
+// jokers already resolved to their chosen rank), `rank` is what the player
+// wants to play (a joker plays as 'JOKER' here — always legal; its chosen
+// rank matters only after it lands).
+export function canPlayRank(effectiveRank, rank) {
+  if (rank === '2' || rank === '7' || rank === '10' || rank === 'JOKER') return true;
+  if (!effectiveRank || effectiveRank === '2') return true; // empty pile, or a 2 reset it
+  if (effectiveRank === '7') return VALUE[rank] >= VALUE['7']; // a pile of nothing but 7s counts as a 7
+  if (effectiveRank === 'J') return VALUE[rank] <= VALUE['J']; // Jack inverts: only lower or another Jack
+  return VALUE[rank] >= VALUE[effectiveRank];
+}
 
-export function buildDecklistIds() {
-  const ids = [];
-  for (const { id, count } of DECKLIST) for (let i = 0; i < count; i++) ids.push(id);
-  return ids;
+export function isRedSuit(suit) {
+  return RED_SUITS.includes(suit);
 }

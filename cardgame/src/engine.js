@@ -1,20 +1,32 @@
-// The authoritative game engine. Only the Host ever calls createMatch/applyIntent
-// -- see net.js and main.js. Every other player only sends intents and renders
-// whatever redacted snapshot the Host sends back; this makes desync structurally
-// impossible since there is exactly one place the simulation actually runs.
+// The authoritative Poopyhead engine. Only the Host ever calls
+// createMatch/applyIntent -- every other player sends intents over their
+// DataChannel and renders the redacted snapshot the Host sends back, so no
+// player's view can desync and nobody can see a hidden card.
 //
-// Free-for-all: 2-8 players in a fixed turn order, everyone playing the same
-// preset deck, last player with life remaining wins. Zone model (card-game
-// skill): every card instance lives in exactly one of deck/hand/board/discard
-// at a time. Moves are always remove-from-A then add-to-B, never a copy.
+// Rules implemented here (see README for the full write-up):
+// - 1 French deck (52 + 2 jokers) under 5 players, 2 decks at 5+.
+// - Deal: 3 face-down, 3 face-up on top of them, 3 in hand.
+// - Hand must always hold 3 DIFFERENT ranks: draw from the deck until it
+//   does (drawing only happens while it holds 2 or fewer distinct ranks).
+// - Play equal-or-higher than the pile's effective top, else pick the pile
+//   up. Any number of copies of one rank can be played together from hand.
+// - Specials: 2 resets, 4 skips, 7 mirrors, 10 burns, J locks to
+//   lower-or-Jack, Joker is wild (becomes a chosen rank, powers included).
+// - Four of the same rank in a row burns the pile. After any burn the turn
+//   passes on normally.
+// - Hand empty + deck empty -> play face-up cards, one per turn; then
+//   face-down cards blind, one per turn. A blind card that doesn't beat the
+//   pile is picked up together with the pile.
+// - Out of cards = safe. The last player still holding cards is the
+//   Poopyhead.
 
-import {
-  cardById, buildDecklistIds, targetKindFor, STARTING_LIFE, STARTING_MANA_CAP,
-  MAX_BOARD_CREATURES, MAX_HAND_SIZE,
-} from './data.js';
+import { buildDecks, canPlayRank, RANKS } from './data.js';
 
-export const PHASES = ['untap', 'draw', 'action', 'end'];
-const OPENING_HAND = 4;
+const FACE_DOWN_COUNT = 3;
+const FACE_UP_COUNT = 3;
+const HAND_COUNT = 3;
+const DISTINCT_RANKS_REQUIRED = 3;
+const BURN_RUN_LENGTH = 4;
 
 // ---------- seeded RNG (mulberry32) so a match is reproducible from its seed ----------
 function makeRng(seed) {
@@ -36,285 +48,296 @@ function shuffle(arr, rng) {
 }
 
 // ---------- match setup ----------
-function newPlayerState(name, uidGen, rng) {
-  const deck = shuffle(buildDecklistIds(), rng).map((cardId) => ({ uid: uidGen(), cardId }));
-  return {
-    name, deck, hand: [], board: [], discard: [],
-    life: STARTING_LIFE, mana: 0, manaCap: 0, eliminated: false,
-  };
-}
-
-// playerIds: ordered array of 2-8 ids, first entry acts first. names: {id: displayName}.
 export function createMatch(seed, playerIds, names = {}) {
-  let nextUid = 1;
-  const uidGen = () => `c${nextUid++}`;
   const rng = makeRng(seed);
+  let nextUid = 1;
+  const drawPile = shuffle(buildDecks(playerIds.length), rng)
+    .map((c) => ({ uid: `c${nextUid++}`, rank: c.rank, suit: c.suit }));
 
   const players = {};
-  for (const id of playerIds) players[id] = newPlayerState(names[id] || id, uidGen, rng);
+  for (const id of playerIds) {
+    players[id] = {
+      name: names[id] || id,
+      hand: [], faceUp: [], faceDown: [],
+      out: false,
+    };
+  }
 
   const state = {
     seed,
     playerOrder: [...playerIds],
     players,
+    drawPile,
+    pile: [],
+    burnedCount: 0,
     active: playerIds[0],
-    phase: 'action',
     turnNumber: 1,
+    pendingJoker: null, // { playerId, card } -- a blind-flipped joker awaiting a rank choice
+    finishedOrder: [], // ids in the order they went out (safe)
+    poopyhead: null, // set when the game ends
     log: [],
-    winner: null,
     _rng: rng,
   };
 
-  for (const id of playerIds) drawCards(state, id, OPENING_HAND);
+  // Deal the way a table dealer would: one card to each player per pass.
+  for (let i = 0; i < FACE_DOWN_COUNT; i++) for (const id of playerIds) players[id].faceDown.push(drawPile.pop());
+  for (let i = 0; i < FACE_UP_COUNT; i++) for (const id of playerIds) players[id].faceUp.push(drawPile.pop());
+  for (let i = 0; i < HAND_COUNT; i++) for (const id of playerIds) players[id].hand.push(drawPile.pop());
 
-  // First active player gets their first mana; everyone else gets theirs on
-  // their own first untap, inside endTurn.
-  state.players[state.active].manaCap = 1;
-  state.players[state.active].mana = 1;
+  // The 3-different-ranks rule applies from the deal onward.
+  for (const id of playerIds) topUpHand(state, id);
 
+  log(state, `${players[playerIds[0]].name} starts.`);
   return state;
 }
 
 function log(state, msg) { state.log.push(msg); if (state.log.length > 300) state.log.shift(); }
 
-function otherPlayerIds(state, key) { return state.playerOrder.filter((id) => id !== key); }
+function distinctRanks(hand) { return new Set(hand.map((c) => c.rank)).size; }
 
-function nextAlivePlayer(state, fromId) {
+function topUpHand(state, id) {
+  const p = state.players[id];
+  while (state.drawPile.length > 0 && distinctRanks(p.hand) < DISTINCT_RANKS_REQUIRED) {
+    p.hand.push(state.drawPile.pop());
+  }
+}
+
+// A joker on the pile counts as its chosen rank from the moment it lands.
+function resolvedRank(card) { return card.rank === 'JOKER' ? card.chosenRank : card.rank; }
+
+// The pile's effective top rank: walk down through 7s (each 7 mirrors
+// whatever is underneath it). null = empty pile. A pile of nothing but 7s
+// counts as a 7.
+export function effectiveTopRank(pile) {
+  for (let i = pile.length - 1; i >= 0; i--) {
+    const r = resolvedRank(pile[i]);
+    if (r !== '7') return r;
+  }
+  return pile.length > 0 ? '7' : null;
+}
+
+// Which zone the player must play from right now.
+export function currentSource(state, id) {
+  const p = state.players[id];
+  if (p.hand.length > 0) return 'hand';
+  if (p.faceUp.length > 0) return 'faceUp';
+  if (p.faceDown.length > 0) return 'faceDown';
+  return null; // out of cards
+}
+
+function hasLegalPlay(state, id) {
+  const source = currentSource(state, id);
+  if (source === 'faceDown') return true; // a blind flip is always attemptable
+  const cards = state.players[id][source] || [];
+  const eff = effectiveTopRank(state.pile);
+  return cards.some((c) => canPlayRank(eff, c.rank));
+}
+
+function alivePlayers(state) {
+  return state.playerOrder.filter((id) => !state.players[id].out);
+}
+
+function advanceTurn(state, skips = 0) {
   const order = state.playerOrder;
-  const idx = order.indexOf(fromId);
-  for (let step = 1; step <= order.length; step++) {
-    const cand = order[(idx + step) % order.length];
-    if (!state.players[cand].eliminated) return cand;
+  let idx = order.indexOf(state.active);
+  let steps = 1 + skips;
+  while (steps > 0) {
+    for (let guard = 0; guard < order.length; guard++) {
+      idx = (idx + 1) % order.length;
+      if (!state.players[order[idx]].out) break;
+    }
+    steps -= 1;
   }
-  return fromId;
+  state.active = order[idx];
+  state.turnNumber += 1;
 }
 
-// ---------- draw + reshuffle (card-game skill, Pattern 1) ----------
-function drawCards(state, key, n) {
-  const p = state.players[key];
-  if (p.eliminated) return;
-  for (let i = 0; i < n; i++) {
-    if (p.deck.length === 0) {
-      if (p.discard.length === 0) {
-        // deck-out: nothing left to draw anywhere. Force elimination via the
-        // normal life<=0 path so there's exactly one place eliminations happen.
-        p.life = 0;
-        log(state, `${p.name} has no cards left to draw.`);
-        return;
-      }
-      p.deck = shuffle(p.discard, state._rng);
-      p.discard = [];
-      log(state, `${p.name} reshuffles their discard pile into their deck.`);
-    }
-    if (p.hand.length >= MAX_HAND_SIZE) {
-      const burned = p.deck.pop();
-      p.discard.push(burned);
-      log(state, `${p.name}'s hand is full; a drawn card is discarded.`);
-      continue;
-    }
-    p.hand.push(p.deck.pop());
+function totalCards(p) { return p.hand.length + p.faceUp.length + p.faceDown.length; }
+
+function checkOutAndGameEnd(state, id) {
+  const p = state.players[id];
+  if (!p.out && totalCards(p) === 0 && state.drawPile.length === 0) {
+    p.out = true;
+    state.finishedOrder.push(id);
+    log(state, `${p.name} is out of cards — safe! 🎉`);
+  }
+  const alive = alivePlayers(state);
+  if (alive.length === 1 && !state.poopyhead) {
+    state.poopyhead = alive[0];
+    log(state, `${state.players[alive[0]].name} is the POOPYHEAD! 💩`);
   }
 }
 
-// ---------- effect resolution (Pattern 2: effects are data, one interpreter) ----------
-function resolveEffect(state, casterKey, effect, ctx) {
-  const caster = state.players[casterKey];
-  switch (effect.op) {
-    case 'damage': {
-      if (effect.target === 'chosen') {
-        const owner = findCreatureOwner(state, ctx.targetUid);
-        const creature = owner && owner.playerState.board.find((c) => c.uid === ctx.targetUid);
-        if (creature) damageCreature(state, owner.playerState, creature, effect.amount);
-      } else if (effect.target === 'chosenAlly') {
-        const creature = caster.board.find((c) => c.uid === ctx.targetUid);
-        if (creature) damageCreature(state, caster, creature, effect.amount);
-      } else if (effect.target === 'chosenFace') {
-        const target = state.players[ctx.targetPlayerId];
-        if (target && !target.eliminated && ctx.targetPlayerId !== casterKey) target.life -= effect.amount;
-      } else if (effect.target === 'allEnemyCreatures') {
-        for (const id of otherPlayerIds(state, casterKey)) {
-          const opp = state.players[id];
-          for (const creature of [...opp.board]) damageCreature(state, opp, creature, effect.amount);
-        }
-      }
-      break;
-    }
-    case 'heal': {
-      caster.life = Math.min(STARTING_LIFE, caster.life + effect.amount);
-      break;
-    }
-    case 'draw': {
-      drawCards(state, casterKey, effect.amount);
-      break;
-    }
-    case 'buff': {
-      const creature = caster.board.find((c) => c.uid === ctx.targetUid);
-      if (creature) { creature.attack += effect.attack; creature.maxHealth += effect.health; creature.health += effect.health; }
-      break;
-    }
+// Moves played cards onto the pile and applies effects. Returns the number
+// of players to skip. Burns clear the pile; the turn passes on normally
+// either way.
+function settlePlay(state, id, cards, jokerRank) {
+  const p = state.players[id];
+  for (const card of cards) {
+    if (card.rank === 'JOKER') card.chosenRank = jokerRank;
+    state.pile.push(card);
   }
+  const playedAs = resolvedRank(cards[0]);
+  const label = cards.length > 1 ? `${cards.length}x ${playedAs}` : playedAs;
+  log(state, `${p.name} plays ${label}${cards[0].rank === 'JOKER' ? ' (Joker)' : ''}.`);
+
+  let burned = false;
+  if (playedAs === '10') {
+    burned = true;
+  } else if (state.pile.length >= BURN_RUN_LENGTH) {
+    const top = state.pile.slice(-BURN_RUN_LENGTH);
+    burned = top.every((c) => resolvedRank(c) === resolvedRank(top[0]));
+  }
+  if (burned) {
+    state.burnedCount += state.pile.length;
+    state.pile = [];
+    log(state, `The pile burns! 🔥`);
+  }
+
+  return playedAs === '4' ? cards.length : 0;
 }
 
-function damageCreature(state, ownerState, creature, amount) {
-  creature.health -= amount;
-  if (creature.health <= 0) {
-    ownerState.board = ownerState.board.filter((c) => c.uid !== creature.uid);
-    ownerState.discard.push({ uid: creature.uid, cardId: creature.cardId });
-  }
-}
-
-function findCreatureOwner(state, uid) {
-  for (const id of state.playerOrder) {
-    if (state.players[id].board.some((c) => c.uid === uid)) return { id, playerState: state.players[id] };
-  }
-  return null;
-}
-
-// ---------- intents: the single entry point for both local and remote actions ----------
+// ---------- intents ----------
 export function applyIntent(state, playerKey, intent) {
-  if (state.winner) return { ok: false, reason: 'match already over' };
+  if (state.poopyhead) return { ok: false, reason: 'the game is over' };
+  if (state.pendingJoker) {
+    if (playerKey !== state.pendingJoker.playerId) return { ok: false, reason: 'waiting for the flipped Joker to be chosen' };
+    if (intent.type !== 'chooseJokerRank') return { ok: false, reason: 'you must choose a rank for your flipped Joker' };
+    return chooseJokerRank(state, playerKey, intent.rank);
+  }
   if (playerKey !== state.active) return { ok: false, reason: 'not your turn' };
-  if (state.players[playerKey].eliminated) return { ok: false, reason: 'you have been eliminated' };
+  if (state.players[playerKey].out) return { ok: false, reason: 'you are already out' };
 
-  if (intent.type === 'playCard') return playCard(state, playerKey, intent.uid, intent.targetUid, intent.targetPlayerId);
-  if (intent.type === 'attack') return attack(state, playerKey, intent.attackerUid, intent.targetPlayerId, intent.targetUid);
-  if (intent.type === 'endTurn') return endTurn(state);
+  if (intent.type === 'playCards') return playCards(state, playerKey, intent.uids, intent.jokerRank);
+  if (intent.type === 'playBlindIndex') {
+    // Face-down uids are redacted from every snapshot (they're blind even to
+    // their owner), so clients identify a flip by position, not uid.
+    const card = state.players[playerKey].faceDown[intent.index];
+    if (!card) return { ok: false, reason: 'that face-down card is not there' };
+    return playBlind(state, playerKey, card.uid);
+  }
+  if (intent.type === 'pickUp') return pickUp(state, playerKey);
   return { ok: false, reason: `unknown intent type ${intent.type}` };
 }
 
-function playCard(state, playerKey, uid, targetUid, targetPlayerId) {
-  const p = state.players[playerKey];
-  const idx = p.hand.findIndex((c) => c.uid === uid);
-  if (idx === -1) return { ok: false, reason: 'card not in hand' };
-  const inst = p.hand[idx];
-  const card = cardById(inst.cardId);
-  if (p.mana < card.cost) return { ok: false, reason: 'not enough mana' };
+function playCards(state, id, uids, jokerRank) {
+  const p = state.players[id];
+  const source = currentSource(state, id);
+  if (source !== 'hand' && source !== 'faceUp') return { ok: false, reason: 'you must flip a face-down card now' };
+  if (!Array.isArray(uids) || uids.length === 0) return { ok: false, reason: 'no cards chosen' };
+  if (source === 'faceUp' && uids.length !== 1) return { ok: false, reason: 'face-up cards go down one per turn' };
 
-  // Validate targets before committing anything (atomic play -- skill pitfall:
-  // "targeting state leaks" if a cancelled play half-applies).
-  const kind = targetKindFor(card);
-  if (kind === 'face' && (!targetPlayerId || !state.players[targetPlayerId] || state.players[targetPlayerId].eliminated || targetPlayerId === playerKey)) {
-    return { ok: false, reason: 'choose a valid opponent to target' };
+  const zone = p[source];
+  const cards = uids.map((uid) => zone.find((c) => c.uid === uid));
+  if (cards.some((c) => !c)) return { ok: false, reason: 'card not available to play' };
+  if (new Set(uids).size !== uids.length) return { ok: false, reason: 'duplicate card' };
+  if (new Set(cards.map((c) => c.rank)).size !== 1) return { ok: false, reason: 'all cards played together must be the same rank' };
+
+  const rank = cards[0].rank;
+  if (rank === 'JOKER') {
+    if (!RANKS.includes(jokerRank)) return { ok: false, reason: 'choose what rank the Joker becomes' };
   }
-  if ((kind === 'any' || kind === 'ally') && !targetUid) return { ok: false, reason: 'this card needs a target' };
-  if (card.type === 'creature' && p.board.length >= MAX_BOARD_CREATURES) return { ok: false, reason: 'board is full' };
+  if (!canPlayRank(effectiveTopRank(state.pile), rank)) return { ok: false, reason: 'that card is not high enough' };
 
-  p.hand.splice(idx, 1);
-  p.mana -= card.cost;
-
-  if (card.type === 'creature') {
-    p.board.push({ uid: inst.uid, cardId: inst.cardId, attack: card.attack, health: card.health, maxHealth: card.health, sick: true, attackedThisTurn: false });
-    log(state, `${p.name} plays ${card.name}.`);
-    if (card.onPlay) for (const fx of card.onPlay) resolveEffect(state, playerKey, fx, { targetUid, targetPlayerId });
-  } else {
-    p.discard.push({ uid: inst.uid, cardId: inst.cardId });
-    log(state, `${p.name} casts ${card.name}.`);
-    for (const fx of card.effects) resolveEffect(state, playerKey, fx, { targetUid, targetPlayerId });
-  }
-
-  checkWin(state);
+  p[source] = zone.filter((c) => !uids.includes(c.uid));
+  const skips = settlePlay(state, id, cards, jokerRank);
+  topUpHand(state, id);
+  checkOutAndGameEnd(state, id);
+  if (!state.poopyhead) advanceTurn(state, skips);
   return { ok: true };
 }
 
-function attack(state, playerKey, attackerUid, targetPlayerId, targetUid) {
-  const p = state.players[playerKey];
-  if (!targetPlayerId || targetPlayerId === playerKey) return { ok: false, reason: 'choose an opponent to attack' };
-  const opp = state.players[targetPlayerId];
-  if (!opp || opp.eliminated) return { ok: false, reason: 'that player is not a valid target' };
+function playBlind(state, id, uid) {
+  const p = state.players[id];
+  if (currentSource(state, id) !== 'faceDown') return { ok: false, reason: 'you still have other cards to play' };
+  const card = p.faceDown.find((c) => c.uid === uid);
+  if (!card) return { ok: false, reason: 'that face-down card is not yours to flip' };
 
-  const attacker = p.board.find((c) => c.uid === attackerUid);
-  if (!attacker) return { ok: false, reason: 'attacker not on your board' };
-  if (attacker.sick) return { ok: false, reason: 'this creature is summoning-sick' };
-  if (attacker.attackedThisTurn) return { ok: false, reason: 'this creature already attacked this turn' };
+  p.faceDown = p.faceDown.filter((c) => c.uid !== uid);
 
-  attacker.attackedThisTurn = true;
-  if (targetUid === 'face') {
-    opp.life -= attacker.attack;
-    log(state, `${p.name}'s ${cardById(attacker.cardId).name} attacks ${opp.name} for ${attacker.attack}.`);
-  } else {
-    const defender = opp.board.find((c) => c.uid === targetUid);
-    if (!defender) return { ok: false, reason: 'target creature not found' };
-    log(state, `${p.name}'s ${cardById(attacker.cardId).name} trades with ${opp.name}'s ${cardById(defender.cardId).name}.`);
-    damageCreature(state, opp, defender, attacker.attack);
-    damageCreature(state, p, attacker, defender.attack);
+  if (card.rank === 'JOKER') {
+    // A blind joker needs its rank chosen before the turn can settle.
+    state.pendingJoker = { playerId: id, card };
+    log(state, `${p.name} flips a Joker!`);
+    return { ok: true };
   }
 
-  checkWin(state);
+  const eff = effectiveTopRank(state.pile);
+  log(state, `${p.name} flips ${card.rank}${card.suit || ''}.`);
+  if (!canPlayRank(eff, card.rank)) {
+    p.hand.push(card, ...state.pile);
+    state.pile = [];
+    log(state, `It doesn't beat the pile — ${p.name} picks everything up.`);
+    advanceTurn(state, 0);
+    return { ok: true };
+  }
+
+  const skips = settlePlay(state, id, [card]);
+  checkOutAndGameEnd(state, id);
+  if (!state.poopyhead) advanceTurn(state, skips);
   return { ok: true };
 }
 
-function endTurn(state) {
-  const key = state.active;
-  const p = state.players[key];
-
-  // end phase: discard down to the hand limit (skill pitfall: no hand limit -> hoarding)
-  while (p.hand.length > MAX_HAND_SIZE) p.discard.push(p.hand.pop());
-
-  const next = nextAlivePlayer(state, key);
-  state.active = next;
-  state.turnNumber += 1;
-
-  // untap
-  const np = state.players[next];
-  for (const creature of np.board) { creature.sick = false; creature.attackedThisTurn = false; }
-  np.manaCap = Math.min(STARTING_MANA_CAP, np.manaCap + 1);
-  np.mana = np.manaCap;
-
-  // draw
-  drawCards(state, next, 1);
-
-  state.phase = 'action';
-  log(state, `${np.name}'s turn (${state.turnNumber}).`);
-  checkWin(state);
+function chooseJokerRank(state, id, rank) {
+  if (!RANKS.includes(rank)) return { ok: false, reason: 'choose a real rank for the Joker' };
+  const { card } = state.pendingJoker;
+  state.pendingJoker = null;
+  const skips = settlePlay(state, id, [card], rank);
+  checkOutAndGameEnd(state, id);
+  if (!state.poopyhead) advanceTurn(state, skips);
   return { ok: true };
 }
 
-function checkWin(state) {
-  if (state.winner) return;
+function pickUp(state, id) {
+  const p = state.players[id];
+  if (state.pile.length === 0) return { ok: false, reason: 'there is nothing to pick up' };
+  const source = currentSource(state, id);
+  if (source === 'faceDown') return { ok: false, reason: 'flip a face-down card instead' };
+  if (hasLegalPlay(state, id)) return { ok: false, reason: 'you have a playable card — you must play' };
+
+  p.hand.push(...state.pile);
+  state.pile = [];
+  log(state, `${p.name} can't play and picks up the pile.`);
+  advanceTurn(state, 0);
+  return { ok: true };
+}
+
+// ---------- per-viewer redaction ----------
+// Hands are private to their owner. Face-down cards are private to EVERYONE,
+// including their owner (they're played blind). Face-up cards, the pile, and
+// counts are public.
+export function redactStateFor(state, viewerKey) {
+  const players = {};
   for (const id of state.playerOrder) {
     const p = state.players[id];
-    if (!p.eliminated && p.life <= 0) {
-      p.eliminated = true;
-      p.life = 0;
-      for (const c of p.board) p.discard.push({ uid: c.uid, cardId: c.cardId });
-      p.board = [];
-      log(state, `${p.name} is eliminated!`);
-    }
-  }
-  const alive = state.playerOrder.filter((id) => !state.players[id].eliminated);
-  if (alive.length === 1) { state.winner = alive[0]; log(state, `${state.players[alive[0]].name} wins the match!`); }
-  else if (alive.length === 0) { state.winner = 'draw'; log(state, 'Everyone was eliminated -- a draw.'); }
-}
-
-// ---------- per-viewer redaction: a player only ever sees their own hand's
-// card identities; every other hand is a count of face-down placeholders.
-// Boards/discards/life/mana are public. ----------
-export function redactStateFor(state, viewerKey) {
-  const redactPlayer = (key) => {
-    const p = state.players[key];
-    const mine = key === viewerKey;
-    return {
+    const mine = id === viewerKey;
+    players[id] = {
       name: p.name,
-      deckCount: p.deck.length,
       hand: mine ? p.hand : p.hand.map((c) => ({ uid: c.uid, hidden: true })),
-      board: p.board,
-      discard: p.discard,
-      life: p.life,
-      mana: p.mana,
-      manaCap: p.manaCap,
-      eliminated: p.eliminated,
+      faceUp: p.faceUp,
+      faceDownCount: p.faceDown.length,
+      out: p.out,
     };
-  };
-  const players = {};
-  for (const id of state.playerOrder) players[id] = redactPlayer(id);
+  }
   return {
     me: viewerKey,
     playerOrder: state.playerOrder,
-    active: state.active,
-    phase: state.phase,
-    turnNumber: state.turnNumber,
-    winner: state.winner,
-    log: state.log,
     players,
+    drawCount: state.drawPile.length,
+    pile: state.pile,
+    effective: effectiveTopRank(state.pile),
+    burnedCount: state.burnedCount,
+    active: state.active,
+    turnNumber: state.turnNumber,
+    pendingJoker: state.pendingJoker ? { playerId: state.pendingJoker.playerId } : null,
+    finishedOrder: state.finishedOrder,
+    poopyhead: state.poopyhead,
+    source: state.players[viewerKey] ? currentSource(state, viewerKey) : null,
+    canPickUp: state.players[viewerKey]
+      ? (state.active === viewerKey && !state.pendingJoker && state.pile.length > 0
+         && currentSource(state, viewerKey) !== 'faceDown' && !state.players[viewerKey].out
+         && !hasLegalPlay(state, viewerKey))
+      : false,
+    log: state.log,
   };
 }
