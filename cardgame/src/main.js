@@ -1,5 +1,5 @@
 import { canPlayRank, isRedSuit, RANKS, VALUE, MAX_PLAYERS } from './data.js';
-import { createMatch, applyIntent, redactStateFor } from './engine.js';
+import { createMatch, applyIntent, redactStateFor, effectiveTopRank, currentSource } from './engine.js';
 import {
   createConnection, onOpen, onMessage, onClose, sendMessage,
   createHostOffer, acceptGuestAnswer, createGuestAnswer,
@@ -12,8 +12,14 @@ let role = null; // 'host' | 'guest'
 let myName = localStorage.getItem('riftclash_name') || '';
 
 // -- host-only state --
-let seats = []; // [{ playerId, conn, code, connected, name, error }]
+let seats = []; // [{ playerId, conn, code, connected, name, error, isBot }]
 let matchState = null; // the one authoritative engine state, only ever touched on the host
+let botTimer = null; // pending bot move, host only
+
+const BOT_NAMES = ['Max 🤖', 'Rita 🤖', 'Otto 🤖', 'Zoe 🤖', 'Rex 🤖', 'Iva 🤖', 'Gus 🤖'];
+// ?fastbots strips the human-feeling pause -- used by automated tests to run
+// full bot games in seconds; harmless if a player ever finds it.
+const BOT_DELAY_MS = new URLSearchParams(location.search).has('fastbots') ? 40 : 850;
 
 // -- guest-only state --
 let guestConn = null;
@@ -94,6 +100,7 @@ function renderMenu(el) {
 function resetAll() {
   for (const seat of seats) if (seat.conn && seat.conn.pc) seat.conn.pc.close();
   if (guestConn && guestConn.pc) guestConn.pc.close();
+  if (botTimer) { clearTimeout(botTimer); botTimer = null; }
   seats = []; matchState = null; snapshot = null; guestConn = null; guestCode = null;
   statusMessage = ''; actionError = ''; selectedUids = []; jokerPrompt = null;
 }
@@ -121,10 +128,17 @@ function startHostFlow() {
   render();
 }
 
+// Host is player 1; seat ids count up from p2. Derived from the highest id
+// still present -- not seats.length -- so removing a bot and adding another
+// seat can never hand out the same id twice.
+function nextSeatId() {
+  const nums = seats.map((s) => parseInt(s.playerId.slice(1), 10));
+  return `p${nums.length ? Math.max(...nums) + 1 : 2}`;
+}
+
 function invitePlayer() {
   if (seats.length >= MAX_PLAYERS - 1) return;
-  const seatIndex = seats.length + 2; // host is player 1
-  const seat = { playerId: `p${seatIndex}`, conn: createConnection('host-seat'), code: null, connected: false, name: '', error: '' };
+  const seat = { playerId: nextSeatId(), conn: createConnection('host-seat'), code: null, connected: false, name: '', error: '' };
   seats.push(seat);
 
   onOpen(seat.conn, () => {
@@ -159,6 +173,7 @@ function invitePlayer() {
       applyIntent(matchState, seat.playerId, msg.intent);
       broadcastSnapshots();
       render();
+      scheduleBots();
     }
   });
 
@@ -171,6 +186,75 @@ function connectSeat(seat, replyCode, onDone) {
   acceptGuestAnswer(seat.conn, replyCode).then(() => onDone(null)).catch((err) => onDone(err.message));
 }
 
+// ---------- bots (host-side only: they're ordinary players to the engine) ----------
+function addBot() {
+  if (seats.length >= MAX_PLAYERS - 1) return;
+  const used = new Set(seats.filter((s) => s.isBot).map((s) => s.name));
+  const name = BOT_NAMES.find((n) => !used.has(n)) || `Bot ${seats.length + 2} 🤖`;
+  seats.push({ playerId: nextSeatId(), conn: null, code: null, connected: true, name, error: '', isBot: true });
+  render();
+}
+
+function botJokerRank(state) {
+  // Burning a fat pile is the one clever thing a bot gets to do. In a game
+  // that's dragging, always burn: joker-as-Ace is what sustains the rare
+  // endless two-bot standoff (an unbeatable A/A/Joker set shuttling back and
+  // forth), while every burn permanently drains cards and forces an end.
+  return state.pile.length >= 6 || state.turnNumber > 400 ? '10' : 'A';
+}
+
+function botChooseMove(state, id) {
+  if (state.pendingJoker && state.pendingJoker.playerId === id) {
+    return { type: 'chooseJokerRank', rank: botJokerRank(state) };
+  }
+  const p = state.players[id];
+  const source = currentSource(state, id);
+  if (source === 'faceDown') {
+    return { type: 'playBlindIndex', index: Math.floor(Math.random() * p.faceDown.length) };
+  }
+  const zone = p[source];
+  const eff = effectiveTopRank(state.pile);
+  const legal = zone.filter((c) => canPlayRank(eff, c.rank));
+  if (legal.length === 0) return { type: 'pickUp' };
+  // dump the cheapest normal card first, hoard the specials for when they're
+  // needed -- but with a dash of randomness, both to feel less mechanical and
+  // so two bots can't fall into a deterministic loop of trading the same
+  // cards forever
+  const spendCost = (r) => (r === 'JOKER' ? 40 : r === '10' ? 30 : r === '2' ? 26 : r === '7' ? 22 : VALUE[r]);
+  legal.sort((a, b) => spendCost(a.rank) - spendCost(b.rank));
+  // Mostly play cheap; sometimes play random. If a bot-vs-bot game somehow
+  // drags on, go fully random -- maximum mixing guarantees it ends.
+  const randomness = state.turnNumber > 400 ? 1 : 0.25;
+  const pickFrom = Math.random() < randomness ? legal[Math.floor(Math.random() * legal.length)] : legal[0];
+  const rank = pickFrom.rank;
+  const uids = source === 'hand'
+    ? zone.filter((c) => c.rank === rank).map((c) => c.uid)
+    : [pickFrom.uid];
+  return { type: 'playCards', uids, jokerRank: rank === 'JOKER' ? botJokerRank(state) : undefined };
+}
+
+// After any state change on the host, if the next actor is a bot, let it move
+// after a human-feeling pause. Each bot move re-arms this, so bot-vs-bot
+// stretches play themselves out.
+function scheduleBots() {
+  if (role !== 'host' || !matchState || matchState.poopyhead || botTimer) return;
+  const actor = matchState.pendingJoker ? matchState.pendingJoker.playerId : matchState.active;
+  const seat = seats.find((s) => s.playerId === actor);
+  if (!seat || !seat.isBot) return;
+  botTimer = setTimeout(() => {
+    botTimer = null;
+    if (!matchState || matchState.poopyhead) return;
+    const nowActor = matchState.pendingJoker ? matchState.pendingJoker.playerId : matchState.active;
+    const nowSeat = seats.find((s) => s.playerId === nowActor);
+    if (!nowSeat || !nowSeat.isBot) return;
+    const res = applyIntent(matchState, nowActor, botChooseMove(matchState, nowActor));
+    if (!res.ok) console.error('bot move rejected:', res.reason);
+    broadcastSnapshots();
+    render();
+    scheduleBots();
+  }, BOT_DELAY_MS);
+}
+
 function renderHostLobby(el) {
   const connectedCount = 1 + seats.filter((s) => s.connected).length;
   el.innerHTML = `
@@ -178,7 +262,11 @@ function renderHostLobby(el) {
     <p class="dim center">Invite up to 7 more players, then start whenever you're ready. 5+ players are dealt from two decks.</p>
     <div class="panel row between"><strong>${esc(myName)} (Host)</strong><span class="badge gold">Ready</span></div>
     <div class="col" id="seatList"></div>
-    <button class="btn secondary wide" id="inviteBtn" ${seats.length >= MAX_PLAYERS - 1 ? 'disabled' : ''}>Invite Player (${seats.length}/${MAX_PLAYERS - 1})</button>
+    <div class="row">
+      <button class="btn secondary grow" id="inviteBtn" ${seats.length >= MAX_PLAYERS - 1 ? 'disabled' : ''}>Invite Player</button>
+      <button class="btn secondary grow" id="addBotBtn" ${seats.length >= MAX_PLAYERS - 1 ? 'disabled' : ''}>Add Bot 🤖</button>
+    </div>
+    <div class="dim center">${seats.length}/${MAX_PLAYERS - 1} seats used — no friends around? Fill the table with bots.</div>
     <button class="btn wide" id="startBtn" ${connectedCount >= 2 ? '' : 'disabled'}>Start Game (${connectedCount} players)</button>
     <button class="btn secondary wide" id="backBtn">Cancel</button>
   `;
@@ -187,7 +275,13 @@ function renderHostLobby(el) {
     const box = document.createElement('div');
     box.className = 'panel col';
     const seatLabel = esc(seat.name || `Player ${i + 2}`);
-    if (seat.connected) {
+    if (seat.isBot) {
+      box.innerHTML = `
+        <div class="row between">
+          <strong>${seatLabel}</strong>
+          <div class="row"><span class="badge gold">Ready</span><button class="btn secondary small" data-removebot="${i}">✕</button></div>
+        </div>`;
+    } else if (seat.connected) {
       box.innerHTML = `<div class="row between"><strong>${seatLabel}</strong><span class="badge gold">Connected</span></div>`;
     } else if (!seat.code) {
       box.innerHTML = `<div class="row between"><strong>${seatLabel}</strong><span class="dim">Generating code…</span></div>`;
@@ -204,6 +298,8 @@ function renderHostLobby(el) {
       `;
     }
     seatList.appendChild(box);
+    const removeBotBtn = box.querySelector(`[data-removebot]`);
+    if (removeBotBtn) removeBotBtn.onclick = () => { seats.splice(i, 1); render(); };
     const copyBtn = box.querySelector(`#copy${i}`);
     if (copyBtn) copyBtn.onclick = () => copyToClipboard(seat.code, copyBtn);
     const connectBtn = box.querySelector(`#connect${i}`);
@@ -215,12 +311,13 @@ function renderHostLobby(el) {
   });
 
   el.querySelector('#inviteBtn').onclick = invitePlayer;
+  el.querySelector('#addBotBtn').onclick = addBot;
   el.querySelector('#startBtn').onclick = startMatch;
   el.querySelector('#backBtn').onclick = backToMenu;
 }
 
 function startMatch() {
-  const connectedSeats = seats.filter((s) => s.connected);
+  const connectedSeats = seats.filter((s) => s.connected || s.isBot);
   for (const s of seats) if (!s.connected && s.conn && s.conn.pc) s.conn.pc.close();
   seats = connectedSeats;
 
@@ -233,11 +330,15 @@ function startMatch() {
   broadcastSnapshots();
   screen = 'board';
   render();
+  scheduleBots();
 }
 
 function broadcastSnapshots() {
   snapshot = redactStateFor(matchState, 'host');
-  for (const seat of seats) sendMessage(seat.conn, { type: 'state', snapshot: redactStateFor(matchState, seat.playerId) });
+  for (const seat of seats) {
+    if (seat.isBot) continue; // bots live on the host -- nothing to send
+    sendMessage(seat.conn, { type: 'state', snapshot: redactStateFor(matchState, seat.playerId) });
+  }
 }
 
 // ---------- guest ----------
@@ -338,6 +439,7 @@ function submitIntent(intent) {
     if (!res.ok) { actionError = res.reason; render(); return; }
     broadcastSnapshots();
     render();
+    scheduleBots();
   } else {
     sendMessage(guestConn, { type: 'intent', intent });
     render(); // the board itself updates when the host's snapshot arrives
