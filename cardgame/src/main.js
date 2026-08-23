@@ -4,7 +4,7 @@ import {
   finishSwap, everyoneReady,
 } from './engine.js';
 import {
-  createConnection, onOpen, onMessage, onClose, sendMessage,
+  createConnection, onOpen, onMessage, onClose, onFailure, sendMessage,
   createHostOffer, acceptGuestAnswer, createGuestAnswer,
 } from './net.js';
 
@@ -173,8 +173,26 @@ function nextSeatId() {
 
 function invitePlayer() {
   if (seats.length >= MAX_PLAYERS - 1) return;
-  const seat = { playerId: nextSeatId(), conn: createConnection('host-seat'), code: null, connected: false, name: '', error: '' };
+  const seat = { playerId: nextSeatId(), conn: null, code: null, connected: false, name: '', error: '' };
   seats.push(seat);
+  openSeatConnection(seat);
+}
+
+// Builds (or rebuilds) one seat's connection and its invite code. Called again
+// by "New code" when a connection fails, so a player who couldn't get through
+// can be handed a fresh code without restarting the whole lobby.
+function openSeatConnection(seat) {
+  if (seat.conn && seat.conn.pc) seat.conn.pc.close();
+  seat.conn = createConnection('host-seat');
+  seat.code = null;
+  seat.connected = false;
+  seat.error = '';
+
+  onFailure(seat.conn, () => {
+    if (seat.connected) return;
+    seat.error = "Couldn't reach that player. Tap New code and send them the fresh one.";
+    render();
+  });
 
   onOpen(seat.conn, () => {
     seat.connected = true; seat.error = '';
@@ -328,8 +346,11 @@ function renderHostLobby(el) {
         <button class="btn secondary small" id="copy${i}">Copy Code</button>
         <div class="dim">Step 2 — paste the reply code they send back:</div>
         <textarea class="code-box" id="reply${i}" placeholder="Paste their reply code here"></textarea>
-        <button class="btn small" id="connect${i}">Connect</button>
-        ${seat.error ? `<div class="error">${seat.error}</div>` : ''}
+        <div class="row">
+          <button class="btn small grow" id="connect${i}">Connect</button>
+          <button class="btn secondary small" id="recode${i}">New code</button>
+        </div>
+        ${seat.error ? `<div class="error">${esc(seat.error)}</div>` : ''}
       `;
     }
     seatList.appendChild(box);
@@ -337,6 +358,8 @@ function renderHostLobby(el) {
     if (removeBotBtn) removeBotBtn.onclick = () => { seats.splice(i, 1); render(); };
     const copyBtn = box.querySelector(`#copy${i}`);
     if (copyBtn) copyBtn.onclick = () => copyToClipboard(seat.code, copyBtn);
+    const recodeBtn = box.querySelector(`#recode${i}`);
+    if (recodeBtn) recodeBtn.onclick = () => { openSeatConnection(seat); render(); };
     const connectBtn = box.querySelector(`#connect${i}`);
     if (connectBtn) connectBtn.onclick = () => {
       const code = box.querySelector(`#reply${i}`).value;
