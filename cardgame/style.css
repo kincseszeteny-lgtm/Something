@@ -217,6 +217,25 @@ html, body {
 
 .joker-chooser { border-color: var(--purple); }
 
+/* -- pre-game swap window -- */
+.swap-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
+.swap-head h2 { margin: 0; font-size: 1.25em; }
+.swap-clock {
+  min-width: 52px; text-align: center; font-size: 1.5em; font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg-panel-2); border: 1px solid var(--border); border-radius: 12px;
+  padding: 4px 10px; color: var(--gold);
+}
+.swap-clock.urgent { color: #fff; background: var(--danger); border-color: var(--danger); }
+.swap-intro { margin: 0; }
+.swap-zone {
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 10px; display: flex; flex-direction: column; gap: 8px;
+}
+.swap-label { font-size: 0.8em; }
+.swap-cards { gap: 8px; justify-content: center; min-height: 84px; align-items: center; }
+.swap-players { gap: 6px; justify-content: center; }
+
 .winner-banner {
   position: sticky; top: 0; z-index: 5; background: var(--bg-panel-2); border: 1px solid var(--gold);
   border-radius: 10px; padding: 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px;

@@ -6,6 +6,10 @@
 export const MIN_PLAYERS = 2;
 export const MAX_PLAYERS = 8;
 
+// Before play starts, everyone gets this long to trade cards between their
+// hand and their face-up table cards.
+export const SWAP_SECONDS = 10;
+
 // 5 or more players -> two decks, otherwise one.
 export const TWO_DECK_THRESHOLD = 5;
 

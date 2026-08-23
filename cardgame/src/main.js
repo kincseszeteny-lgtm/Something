@@ -1,5 +1,8 @@
-import { canPlayRank, isRedSuit, RANKS, VALUE, MAX_PLAYERS } from './data.js';
-import { createMatch, applyIntent, redactStateFor, effectiveTopRank, currentSource } from './engine.js';
+import { canPlayRank, isRedSuit, RANKS, VALUE, MAX_PLAYERS, SWAP_SECONDS } from './data.js';
+import {
+  createMatch, applyIntent, redactStateFor, effectiveTopRank, currentSource,
+  finishSwap, everyoneReady,
+} from './engine.js';
 import {
   createConnection, onOpen, onMessage, onClose, sendMessage,
   createHostOffer, acceptGuestAnswer, createGuestAnswer,
@@ -15,6 +18,7 @@ let myName = localStorage.getItem('riftclash_name') || '';
 let seats = []; // [{ playerId, conn, code, connected, name, error, isBot }]
 let matchState = null; // the one authoritative engine state, only ever touched on the host
 let botTimer = null; // pending bot move, host only
+let swapTimer = null; // closes the pre-game swap window, host only
 
 const BOT_NAMES = ['Max 🤖', 'Rita 🤖', 'Otto 🤖', 'Zoe 🤖', 'Rex 🤖', 'Iva 🤖', 'Gus 🤖'];
 // ?fastbots strips the human-feeling pause -- used by automated tests to run
@@ -26,6 +30,9 @@ let guestConn = null;
 let guestCode = null;
 
 let snapshot = null; // the redacted view we render, on either role
+let swapDeadline = null; // local wall-clock deadline for the swap countdown
+let swapTicker = null; // repaints the countdown once a second
+let swapSelection = null; // { zone: 'hand' | 'faceUp', uid } -- first half of a swap
 let statusMessage = '';
 let actionError = '';
 
@@ -39,6 +46,31 @@ let jokerPrompt = null; // { uids } -- a joker play from hand/faceUp awaiting it
 // "<img src=x onerror=...>" would execute in every player's page.
 const ESCAPE_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 function esc(str) { return String(str ?? '').replace(/[&<>"']/g, (c) => ESCAPE_MAP[c]); }
+
+// Every snapshot -- host-local or arrived over the wire -- lands here, so the
+// swap countdown is armed from one place. The deadline is derived from the
+// duration in the snapshot plus the moment we received it, never from a
+// timestamp in another device's clock.
+function setSnapshot(next) {
+  snapshot = next;
+  if (next && next.phase === 'swap') {
+    swapDeadline = Date.now() + next.swapMsLeft;
+    if (!swapTicker) swapTicker = setInterval(() => {
+      if (snapshot && snapshot.phase === 'swap') render(); else stopSwapTicker();
+    }, 500);
+  } else {
+    stopSwapTicker();
+    swapSelection = null;
+  }
+}
+
+function stopSwapTicker() {
+  if (swapTicker) { clearInterval(swapTicker); swapTicker = null; }
+}
+
+function swapSecondsLeft() {
+  return Math.max(0, Math.ceil((swapDeadline - Date.now()) / 1000));
+}
 
 function render() {
   // A render can be forced by a background event unrelated to whatever the
@@ -58,7 +90,7 @@ function render() {
   else if (screen === 'host-lobby') renderHostLobby(el);
   else if (screen === 'guest-connect') renderGuestConnect(el);
   else if (screen === 'guest-lobby') renderGuestLobby(el);
-  else if (screen === 'board') renderBoard(el);
+  else if (screen === 'board') (snapshot && snapshot.phase === 'swap' ? renderSwapPhase : renderBoard)(el);
   else if (screen === 'disconnected') renderDisconnected(el);
 
   root.querySelectorAll('textarea[id], input[id]').forEach((f) => {
@@ -101,8 +133,11 @@ function resetAll() {
   for (const seat of seats) if (seat.conn && seat.conn.pc) seat.conn.pc.close();
   if (guestConn && guestConn.pc) guestConn.pc.close();
   if (botTimer) { clearTimeout(botTimer); botTimer = null; }
+  if (swapTimer) { clearTimeout(swapTimer); swapTimer = null; }
+  stopSwapTicker();
   seats = []; matchState = null; snapshot = null; guestConn = null; guestCode = null;
   statusMessage = ''; actionError = ''; selectedUids = []; jokerPrompt = null;
+  swapSelection = null; swapDeadline = null;
 }
 
 function backToMenu() {
@@ -171,9 +206,8 @@ function invitePlayer() {
       render();
     } else if (msg.type === 'intent' && matchState) {
       applyIntent(matchState, seat.playerId, msg.intent);
-      broadcastSnapshots();
-      render();
-      scheduleBots();
+      maybeFinishSwapEarly();
+      hostSync();
     }
   });
 
@@ -238,6 +272,7 @@ function botChooseMove(state, id) {
 // stretches play themselves out.
 function scheduleBots() {
   if (role !== 'host' || !matchState || matchState.poopyhead || botTimer) return;
+  if (matchState.phase === 'swap') return; // nobody has a turn yet
   const actor = matchState.pendingJoker ? matchState.pendingJoker.playerId : matchState.active;
   const seat = seats.find((s) => s.playerId === actor);
   if (!seat || !seat.isBot) return;
@@ -327,14 +362,56 @@ function startMatch() {
 
   const seed = Math.floor(Math.random() * 0xFFFFFFFF);
   matchState = createMatch(seed, playerIds, names);
+
+  // Bots do their swapping right away and lock in, so a solo player can hit
+  // Ready and start immediately instead of waiting out the whole window.
+  for (const seat of seats) if (seat.isBot) botSwap(matchState, seat.playerId);
+
+  swapTimer = setTimeout(() => {
+    swapTimer = null;
+    if (!matchState || matchState.phase !== 'swap') return;
+    finishSwap(matchState);
+    hostSync();
+  }, SWAP_SECONDS * 1000);
+
   broadcastSnapshots();
   screen = 'board';
+  render();
+}
+
+// Bots want their strongest cards face-up, since table cards are played in
+// the endgame when the pile is contested: repeatedly trade the best card in
+// hand for the worst one on the table.
+function botSwap(state, id) {
+  const p = state.players[id];
+  const strength = (c) => (c.rank === 'JOKER' ? 99 : VALUE[c.rank]);
+  for (let i = 0; i < 3; i++) {
+    let best = null, worst = null;
+    for (const c of p.hand) if (!best || strength(c) > strength(best)) best = c;
+    for (const c of p.faceUp) if (!worst || strength(c) < strength(worst)) worst = c;
+    if (!best || !worst || strength(best) <= strength(worst)) break;
+    applyIntent(state, id, { type: 'swapCard', handUid: best.uid, faceUpUid: worst.uid });
+  }
+  applyIntent(state, id, { type: 'ready' });
+}
+
+// Everyone locked in before the clock ran out -- start now.
+function maybeFinishSwapEarly() {
+  if (!matchState || matchState.phase !== 'swap' || !everyoneReady(matchState)) return;
+  if (swapTimer) { clearTimeout(swapTimer); swapTimer = null; }
+  finishSwap(matchState);
+}
+
+// The host's own after-any-change routine: push state everywhere, repaint,
+// and let the bots move if it's their turn.
+function hostSync() {
+  broadcastSnapshots();
   render();
   scheduleBots();
 }
 
 function broadcastSnapshots() {
-  snapshot = redactStateFor(matchState, 'host');
+  setSnapshot(redactStateFor(matchState, 'host'));
   for (const seat of seats) {
     if (seat.isBot) continue; // bots live on the host -- nothing to send
     sendMessage(seat.conn, { type: 'state', snapshot: redactStateFor(matchState, seat.playerId) });
@@ -354,7 +431,7 @@ function startGuestFlow() {
     if (msg.type === 'whoAreYou') {
       sendMessage(guestConn, { type: 'hello', name: myName.trim() });
     } else if (msg.type === 'state') {
-      snapshot = msg.snapshot;
+      setSnapshot(msg.snapshot);
       screen = 'board';
       selectedUids = selectedUids.filter((uid) => snapshot.players[snapshot.me].hand.some((c) => c.uid === uid));
       actionError = '';
@@ -429,6 +506,79 @@ function renderDisconnected(el) {
   el.querySelector('#menuBtn').onclick = backToMenu;
 }
 
+// ---------- pre-game swap ----------
+function renderSwapPhase(el) {
+  const me = snapshot.players[snapshot.me];
+  const secs = swapSecondsLeft();
+  const locked = me.ready;
+  const others = snapshot.playerOrder.filter((id) => id !== snapshot.me);
+
+  const swapCard = (card, zone) => pcardMarkup(card, {
+    zone,
+    clickable: !locked,
+    selected: swapSelection && swapSelection.zone === zone && swapSelection.uid === card.uid,
+  });
+
+  el.innerHTML = `
+    <div class="swap-head">
+      <h2>Set up your table</h2>
+      <div class="swap-clock ${secs <= 3 ? 'urgent' : ''}">${secs}</div>
+    </div>
+    <p class="dim center swap-intro">
+      Tap a card in your hand and one on your table to trade them. Strong cards are
+      best left on the table — you play those at the end, when the pile gets nasty.
+    </p>
+
+    <div class="swap-zone">
+      <div class="dim swap-label">On your table (everyone can see these)</div>
+      <div class="row wrap swap-cards" id="swapFaceUp">${me.faceUp.map((c) => swapCard(c, 'faceUp')).join('')}</div>
+    </div>
+
+    <div class="swap-zone">
+      <div class="dim swap-label">In your hand (only you can see these)</div>
+      <div class="row wrap swap-cards" id="swapHand">${me.hand.map((c) => swapCard(c, 'hand')).join('')}</div>
+    </div>
+
+    ${actionError ? `<div class="dim center error">${esc(actionError)}</div>` : ''}
+
+    <button class="btn wide" id="readyBtn" ${locked ? 'disabled' : ''}>
+      ${locked ? 'Ready — waiting for the others…' : "I'm Ready"}
+    </button>
+
+    <div class="row wrap swap-players">
+      ${others.map((id) => {
+        const p = snapshot.players[id];
+        return `<span class="badge ${p.ready ? 'gold' : ''}">${p.ready ? '✓' : '⏳'} ${esc(p.name)}</span>`;
+      }).join('')}
+    </div>
+  `;
+
+  if (!locked) {
+    el.querySelectorAll('.swap-cards .pcard').forEach((cardEl) => {
+      cardEl.onclick = () => {
+        const zone = cardEl.dataset.zone;
+        const uid = cardEl.dataset.uid;
+        if (!swapSelection) { swapSelection = { zone, uid }; render(); return; }
+        if (swapSelection.zone === zone) {
+          // tapping within the same row just moves the selection
+          swapSelection = swapSelection.uid === uid ? null : { zone, uid };
+          render();
+          return;
+        }
+        const handUid = zone === 'hand' ? uid : swapSelection.uid;
+        const faceUpUid = zone === 'faceUp' ? uid : swapSelection.uid;
+        swapSelection = null;
+        submitIntent({ type: 'swapCard', handUid, faceUpUid });
+      };
+    });
+  }
+
+  el.querySelector('#readyBtn').onclick = () => {
+    swapSelection = null;
+    submitIntent({ type: 'ready' });
+  };
+}
+
 // ---------- board ----------
 function submitIntent(intent) {
   actionError = '';
@@ -437,9 +587,8 @@ function submitIntent(intent) {
   if (role === 'host') {
     const res = applyIntent(matchState, 'host', intent);
     if (!res.ok) { actionError = res.reason; render(); return; }
-    broadcastSnapshots();
-    render();
-    scheduleBots();
+    maybeFinishSwapEarly();
+    hostSync();
   } else {
     sendMessage(guestConn, { type: 'intent', intent });
     render(); // the board itself updates when the host's snapshot arrives
@@ -449,15 +598,16 @@ function submitIntent(intent) {
 const RANK_LABEL = { JOKER: '🃏' };
 function rankLabel(rank) { return RANK_LABEL[rank] || rank; }
 
-function pcardMarkup(card, { clickable = false, selected = false, mini = false } = {}) {
+function pcardMarkup(card, { clickable = false, selected = false, mini = false, zone = null } = {}) {
+  const zoneAttr = zone ? ` data-zone="${zone}"` : '';
   if (card.hidden || card.facedown) {
-    return `<div class="pcard pcard-back ${mini ? 'mini' : ''} ${clickable ? 'clickable' : ''}" ${card.uid ? `data-uid="${card.uid}"` : ''}></div>`;
+    return `<div class="pcard pcard-back ${mini ? 'mini' : ''} ${clickable ? 'clickable' : ''}" ${card.uid ? `data-uid="${card.uid}"` : ''}${zoneAttr}></div>`;
   }
   const joker = card.rank === 'JOKER';
   const red = joker ? false : isRedSuit(card.suit);
   const chosen = joker && card.chosenRank ? `<div class="pcard-chosen">= ${card.chosenRank}</div>` : '';
   return `
-    <div class="pcard ${red ? 'red' : ''} ${joker ? 'joker' : ''} ${mini ? 'mini' : ''} ${clickable ? 'clickable' : ''} ${selected ? 'selected' : ''}" data-uid="${card.uid}">
+    <div class="pcard ${red ? 'red' : ''} ${joker ? 'joker' : ''} ${mini ? 'mini' : ''} ${clickable ? 'clickable' : ''} ${selected ? 'selected' : ''}" data-uid="${card.uid}"${zoneAttr}>
       <div class="pcard-rank">${rankLabel(card.rank)}</div>
       <div class="pcard-suit">${joker ? 'JOKER' : card.suit}</div>
       ${chosen}

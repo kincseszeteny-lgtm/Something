@@ -20,7 +20,7 @@
 // - Out of cards = safe. The last player still holding cards is the
 //   Poopyhead.
 
-import { buildDecks, canPlayRank, RANKS } from './data.js';
+import { buildDecks, canPlayRank, RANKS, VALUE, SUITS, SWAP_SECONDS } from './data.js';
 
 const FACE_DOWN_COUNT = 3;
 const FACE_UP_COUNT = 3;
@@ -70,7 +70,10 @@ export function createMatch(seed, playerIds, names = {}) {
     drawPile,
     pile: [],
     burnedCount: 0,
-    active: playerIds[0],
+    phase: 'swap', // 'swap' (pre-game card trading) | 'play'
+    swapEndsAt: Date.now() + SWAP_SECONDS * 1000,
+    ready: {}, // playerId -> true once they've locked in their swaps
+    active: null, // decided by the lowest card once the swap window closes
     turnNumber: 1,
     pendingJoker: null, // { playerId, card } -- a blind-flipped joker awaiting a rank choice
     finishedOrder: [], // ids in the order they went out (safe)
@@ -87,8 +90,65 @@ export function createMatch(seed, playerIds, names = {}) {
   // The 3-different-ranks rule applies from the deal onward.
   for (const id of playerIds) topUpHand(state, id);
 
-  log(state, `${players[playerIds[0]].name} starts.`);
+  log(state, `Swap your cards — ${SWAP_SECONDS} seconds!`);
   return state;
+}
+
+// ---------- pre-game swap phase ----------
+function swapCard(state, id, handUid, faceUpUid) {
+  if (state.ready[id]) return { ok: false, reason: "you're already ready — no more swapping" };
+  const p = state.players[id];
+  const h = p.hand.findIndex((c) => c.uid === handUid);
+  const f = p.faceUp.findIndex((c) => c.uid === faceUpUid);
+  if (h === -1 || f === -1) return { ok: false, reason: 'those are not your cards to swap' };
+  const tmp = p.hand[h];
+  p.hand[h] = p.faceUp[f];
+  p.faceUp[f] = tmp;
+  return { ok: true };
+}
+
+function setReady(state, id) {
+  state.ready[id] = true;
+  return { ok: true };
+}
+
+export function everyoneReady(state) {
+  return state.playerOrder.every((id) => state.ready[id]);
+}
+
+// Lowest card in hand starts. Jokers are wild, so they don't count as a
+// "smallest card"; ties break by suit order, then by seat order.
+function lowestCardHolder(state) {
+  let best = null;
+  for (const id of state.playerOrder) {
+    for (const c of state.players[id].hand) {
+      if (c.rank === 'JOKER') continue;
+      const value = VALUE[c.rank];
+      const suit = SUITS.indexOf(c.suit);
+      if (!best || value < best.value || (value === best.value && suit < best.suit)) {
+        best = { id, value, suit, card: c };
+      }
+    }
+  }
+  return best;
+}
+
+// Closes the swap window and begins play. The host calls this when the timer
+// runs out or everyone is ready.
+export function finishSwap(state) {
+  if (state.phase !== 'swap') return { ok: false, reason: 'the swap window is already closed' };
+  state.phase = 'play';
+  state.swapEndsAt = null;
+
+  // A swap can leave a hand short of 3 distinct ranks, so re-apply the draw
+  // rule before anyone plays.
+  for (const id of state.playerOrder) topUpHand(state, id);
+
+  const best = lowestCardHolder(state);
+  state.active = best ? best.id : state.playerOrder[0];
+  const label = best ? `${best.card.rank}${best.card.suit}` : 'no low card';
+  log(state, `${state.players[state.active].name} has the lowest card (${label}) and starts.`);
+  return { ok: true };
 }
 
 function log(state, msg) { state.log.push(msg); if (state.log.length > 300) state.log.shift(); }
@@ -200,6 +260,14 @@ function settlePlay(state, id, cards, jokerRank) {
 // ---------- intents ----------
 export function applyIntent(state, playerKey, intent) {
   if (state.poopyhead) return { ok: false, reason: 'the game is over' };
+
+  // During the swap window nobody has a turn -- everyone trades at once.
+  if (state.phase === 'swap') {
+    if (intent.type === 'swapCard') return swapCard(state, playerKey, intent.handUid, intent.faceUpUid);
+    if (intent.type === 'ready') return setReady(state, playerKey);
+    return { ok: false, reason: 'the game has not started yet' };
+  }
+
   if (state.pendingJoker) {
     if (playerKey !== state.pendingJoker.playerId) return { ok: false, reason: 'waiting for the flipped Joker to be chosen' };
     if (intent.type !== 'chooseJokerRank') return { ok: false, reason: 'you must choose a rank for your flipped Joker' };
@@ -317,12 +385,18 @@ export function redactStateFor(state, viewerKey) {
       faceUp: p.faceUp,
       faceDownCount: p.faceDown.length,
       out: p.out,
+      ready: !!state.ready[id],
     };
   }
   return {
     me: viewerKey,
     playerOrder: state.playerOrder,
     players,
+    phase: state.phase,
+    // Sent as a duration, not a timestamp: the host's clock and a guest's
+    // clock don't agree, so each client counts down from when it received
+    // this rather than from a wall-clock deadline it can't trust.
+    swapMsLeft: state.phase === 'swap' ? Math.max(0, state.swapEndsAt - Date.now()) : 0,
     drawCount: state.drawPile.length,
     pile: state.pile,
     effective: effectiveTopRank(state.pile),

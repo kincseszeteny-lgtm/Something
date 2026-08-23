@@ -53,6 +53,22 @@ Each player gets, in dealer order:
 
 The rest of the cards form the draw deck.
 
+### The swap (10 seconds, before play)
+
+As soon as the cards are dealt, everyone gets **10 seconds to trade cards
+between their hand and their face-up table cards** — tap one of each to swap
+them. Everyone does this at the same time; there are no turns yet. Put your
+strong cards on the table: those are what you play at the very end, when the
+pile is hardest to beat. Hit **I'm Ready** to lock in early, and once every
+player is ready the game starts without waiting out the clock.
+
+### Who starts
+
+**The player holding the lowest card starts** (jokers are wild, so they don't
+count as low). Since this is decided *after* the swap, sending your low cards
+to the table also sends the opening turn elsewhere. Ties break by suit, then
+by seat.
+
 ### The hand rule
 
 Your hand must always contain **3 different ranks**. Whenever it holds 2 or
